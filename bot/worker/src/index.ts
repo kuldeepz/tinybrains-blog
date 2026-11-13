@@ -8,6 +8,7 @@ export interface Env {
   GITHUB_TOKEN: string;
   GITHUB_REPO: string;
   SITE_URL: string;
+  APPROVALS: KVNamespace; // paid-model approvals: key -> "yes" | "no"
 }
 
 const HELP = `🧠 <b>tinybrains.ai blog bot</b>
@@ -24,6 +25,7 @@ const TOPICS_PATH = "ops/topics.json";
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
+    if (req.method === "GET" && url.pathname.startsWith("/approval/")) return approvalStatus(req, url, env);
     if (req.method === "GET") return new Response("tinybrains bot ok");
     if (url.pathname !== "/telegram" || req.method !== "POST") return new Response("not found", { status: 404 });
     if (req.headers.get("X-Telegram-Bot-Api-Secret-Token") !== env.TELEGRAM_WEBHOOK_SECRET) {
@@ -109,10 +111,13 @@ async function handle(update: any, env: Env): Promise<void> {
 
 async function handleCallback(q: any, env: Env): Promise<void> {
   if (String(q.from?.id) !== String(env.TELEGRAM_CHAT_ID) && String(q.message?.chat?.id) !== String(env.TELEGRAM_CHAT_ID)) return;
-  const [action, prStr] = String(q.data ?? "").split(":");
+  const [action, prStr, answer] = String(q.data ?? "").split(":");
   const pr = Number(prStr);
   let note = "";
-  if (action === "approve" && pr) {
+  if (action === "paid" && prStr && (answer === "yes" || answer === "no")) {
+    await env.APPROVALS.put(prStr, answer, { expirationTtl: 86400 });
+    note = answer === "yes" ? "💸 Paid models approved for this run." : "⏹ Paid models declined.";
+  } else if (action === "approve" && pr) {
     const r = await gh(env, `/pulls/${pr}/merge`, "PUT", { merge_method: "squash" });
     note = r.ok ? `✅ Merged PR #${pr}. Publishing…` : `⚠️ Merge failed: ${esc((await r.json<any>()).message ?? r.status)}`;
   } else if (action === "reject" && pr) {
@@ -124,6 +129,20 @@ async function handleCallback(q: any, env: Env): Promise<void> {
     await tg(env, "editMessageReplyMarkup", { chat_id: q.message.chat.id, message_id: q.message.message_id, reply_markup: { inline_keyboard: [] } });
   }
   if (note) await send(env, note);
+}
+
+// ---- paid-model approval polling (called by the GitHub Actions run)
+async function approvalStatus(req: Request, url: URL, env: Env): Promise<Response> {
+  const key = decodeURIComponent(url.pathname.slice("/approval/".length));
+  if (!/^[\w.-]{1,100}$/.test(key)) return new Response("bad key", { status: 400 });
+  const expected = await sha256Hex(`${env.TELEGRAM_BOT_TOKEN}:${key}`);
+  if (req.headers.get("X-Approval-Auth") !== expected) return new Response("forbidden", { status: 403 });
+  return new Response((await env.APPROVALS.get(key)) ?? "pending");
+}
+
+export async function sha256Hex(s: string): Promise<string> {
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 // ---- GitHub
