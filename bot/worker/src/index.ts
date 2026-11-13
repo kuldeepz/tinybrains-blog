@@ -172,7 +172,15 @@ async function gh(env: Env, path: string, method = "GET", body?: unknown): Promi
 
 async function dispatch(env: Env, payload: Record<string, unknown>): Promise<void> {
   const r = await gh(env, "/dispatches", "POST", { event_type: "telegram", client_payload: payload });
-  if (!r.ok) throw new Error(`GitHub dispatch failed (${r.status})`);
+  if (!r.ok) throw new Error(`GitHub dispatch failed (${r.status})${permHint(r.status)}`);
+}
+
+// Fine-grained PAT problems are the usual cause of 401/403/404: say exactly what to change.
+export function permHint(status: number): string {
+  if (status === 401) return ": BOT_GITHUB_PAT is invalid or expired. Create a new one, update the GitHub secret and re-run the Deploy Telegram bot workflow.";
+  if (status === 403) return ": BOT_GITHUB_PAT needs Repository permissions → Contents: Read and write (and Pull requests: Read and write).";
+  if (status === 404) return ": BOT_GITHUB_PAT has no access to this repo. Add it under Repository access.";
+  return "";
 }
 
 async function getTopics(env: Env): Promise<{ file: TopicsFile; sha: string }> {
@@ -190,7 +198,7 @@ async function updateTopics<T>(env: Env, mutate: (f: TopicsFile) => T, message: 
       message, sha, branch: "main", content: b64encode(JSON.stringify(file, null, 2) + "\n"),
     });
     if (r.ok) return { result };
-    if (r.status !== 409 && r.status !== 422) throw new Error(`tracker update failed (${r.status})`);
+    if (r.status !== 409 && r.status !== 422) throw new Error(`tracker update failed (${r.status})${permHint(r.status)}`);
     await new Promise((res) => setTimeout(res, 400 * (attempt + 1))); // concurrent edit: refetch + reapply
   }
   throw new Error("tracker busy, try again");
