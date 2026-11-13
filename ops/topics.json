@@ -4,15 +4,15 @@
   "topics": [
     {
       "id": "T001",
-      "title": "How KV Cache Speeds Up LLM Inference",
+      "title": "How KV Cache Speeds Up LLM Inference Without Recomputing Past Tokens",
       "notes": "Explain what the KV cache is, why it avoids recomputing past tokens during autoregressive decoding, and how it reduces latency and compute cost. Include a concrete example of prompt processing vs token generation, and mention trade-offs such as memory usage and cache eviction.",
-      "status": "in_progress",
+      "status": "in_review",
       "tags": [],
       "source": "telegram",
       "created": "2026-11-13T12:48:11Z",
-      "updated": "2026-11-13T12:48:13Z",
-      "slug": null,
-      "pr": null,
+      "updated": "2026-11-13T13:03:07Z",
+      "slug": "how-kv-cache-speeds-up-llm-inference-without-recomputing-past-tokens",
+      "pr": 1,
       "url": null,
       "private_files": false,
       "history": [
@@ -23,6 +23,10 @@
         {
           "at": "2026-11-13T12:48:13Z",
           "status": "in_progress"
+        },
+        {
+          "at": "2026-11-13T13:03:07Z",
+          "status": "in_review"
         }
       ]
     }
