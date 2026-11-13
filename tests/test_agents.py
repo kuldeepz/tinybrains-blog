@@ -83,7 +83,7 @@ class TestPipeline(unittest.TestCase):
     def test_parallel_teams(self):
         add_ideas([{"title": f"topic {i}"} for i in range(3)], "cli")
         fake = FakeLLM()
-        with mock.patch.object(orchestrator, "LLM", return_value=fake):
+        with mock.patch.object(orchestrator, "make_llm", return_value=fake):
             posts = asyncio.run(orchestrator.run_write(["T001", "T002", "T003"], open_pr=False, build=False))
         self.assertEqual(len(posts), 3)
         self.assertTrue(all(p.ok for p in posts), [p.error for p in posts])
@@ -115,24 +115,85 @@ class TestHelpers(unittest.TestCase):
     def test_cover_is_valid_svg(self):
         ET.fromstring(cover_svg("A <title> & more", "Agents", "seed"))
 
-    def test_llm_fallback_to_azure(self):
+    def _client(self, approver=None):
         os.environ.update(OPENROUTER_API_KEY="x", AZURE_OPENAI_API_KEY="y", AZURE_OPENAI_ENDPOINT="https://e.openai.azure.com",
                           AZURE_OPENAI_DEPLOYMENT="gpt")
-        try:
-            client = llm_mod.LLM()
+        self.addCleanup(lambda: [os.environ.pop(k, None) for k in
+                                 ("OPENROUTER_API_KEY", "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_DEPLOYMENT")])
+        return llm_mod.LLM(approver=approver)
 
-            async def boom(*a, **k):
-                raise RuntimeError("openrouter down")
+    def test_free_models_used_first(self):
+        seen = []
+        client = self._client()
 
-            async def ok(*a, **k):
-                return "from azure"
-            client._call_openrouter = boom
-            client._call_azure = ok
-            self.assertEqual(asyncio.run(client.chat("editor", "s", "u")), "from azure")
-            self.assertEqual(client.usage["fallbacks"], 1)
-        finally:
-            for k in ("OPENROUTER_API_KEY", "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_DEPLOYMENT"):
-                os.environ.pop(k, None)
+        async def orr(rc, models, messages, json_mode, *, paid):
+            seen.append((tuple(models), paid))
+            return "free answer"
+        client._call_openrouter = orr
+        self.assertEqual(asyncio.run(client.chat("writer", "s", "u")), "free answer")
+        self.assertTrue(all(m.endswith(":free") for m in seen[0][0]))
+        self.assertFalse(seen[0][1])
+
+    def test_paid_needs_approval(self):
+        class Deny:
+            asked = 0
+
+            async def allow_paid(self, role, model, reason):
+                Deny.asked += 1
+                return False
+        client = self._client(Deny())
+
+        async def orr(rc, models, messages, json_mode, *, paid):
+            if not paid:
+                raise RuntimeError("429 rate limited")
+            raise AssertionError("paid model must not be called without approval")
+        client._call_openrouter = orr
+        with self.assertRaises(llm_mod.LLMError):
+            asyncio.run(client.chat("writer", "s", "u"))
+        self.assertEqual(Deny.asked, 1)
+
+    def test_approved_paid_then_azure(self):
+        class Allow:
+            async def allow_paid(self, role, model, reason):
+                return True
+        client = self._client(Allow())
+        calls = []
+
+        async def orr(rc, models, messages, json_mode, *, paid):
+            calls.append("paid" if paid else "free")
+            raise RuntimeError("down")
+
+        async def az(*a, **k):
+            calls.append("azure")
+            return "from azure"
+        client._call_openrouter = orr
+        client._call_azure = az
+        self.assertEqual(asyncio.run(client.chat("editor", "s", "u")), "from azure")
+        self.assertEqual(calls, ["free", "paid", "azure"])
+
+    def test_approver_asks_once_for_parallel_teams(self):
+        from agents import approval
+        ap = approval.Approver()
+        ap.tg = mock.Mock(enabled=True)
+        ap.url = "https://bot.example"
+        asked = []
+
+        async def wait():
+            asked.append(1)
+            await asyncio.sleep(0.01)
+            return True
+        ap._wait = wait
+
+        async def many():
+            return await asyncio.gather(*(ap.allow_paid("writer", "m", "429") for _ in range(4)))
+        self.assertEqual(asyncio.run(many()), [True] * 4)
+        self.assertEqual(len(asked), 1)
+
+    def test_approver_denies_without_channel(self):
+        from agents import approval
+        ap = approval.Approver()
+        ap.url = ""
+        self.assertFalse(asyncio.run(ap.allow_paid("writer", "m", "429")))
 
     def test_parse_json(self):
         self.assertEqual(llm_mod.parse_json('```json\n{"a": 1}\n```'), {"a": 1})

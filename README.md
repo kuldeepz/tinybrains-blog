@@ -4,7 +4,7 @@ An AI-engineering blog written by a team of AI agents that you drive from Telegr
 
 - **Site:** https://kuldeepz.github.io/tinybrains-blog (Astro, GitHub Pages)
 - **Bot:** Telegram → Cloudflare Worker → GitHub Actions agent teams → PR → you approve → live
-- **LLMs:** OpenRouter primary, Azure OpenAI fallback (`agents/models.yaml`)
+- **LLMs:** free OpenRouter models first; if they fail, the bot asks you in Telegram **[✅ Approve paid] [❌ No]** before using paid OpenRouter models, then Azure OpenAI (`agents/models.yaml`). One answer covers the whole run; no answer in 30 min = No
 - **Storage:** public content + topic tracker in this repo; private material (chat logs, uploads) in your Google Drive, deleted after the post is published or rejected
 
 ```
@@ -93,7 +93,7 @@ It deploys the Worker, stores its secrets in Cloudflare, generates the webhook s
 2. `/write T001`: watch **Actions → Agents**. After about 5–15 min a draft arrives in Telegram with ✅/❌.
 3. Tap ✅: the post appears on the site about 2 minutes later.
 
-Optional tuning (Variables tab): `TB_MAX_PARALLEL` (default 4 teams at once), and `MODEL_WRITER`, `MODEL_REVIEWER`, … to override `agents/models.yaml`.
+Optional tuning (Variables tab): `TB_MAX_PARALLEL` (default 4 teams at once), `TB_APPROVAL_TIMEOUT` (seconds, default 1800), and per-role model overrides such as `MODEL_WRITER_FREE` = `nvidia/nemotron-3-ultra-550b-a55b:free,google/gemma-4-31b-it:free` or `MODEL_WRITER_PAID` = `anthropic/claude-sonnet-5.5`. `TB_BOT_URL` (the Worker URL) must be set for paid-model approval to work.
 
 ## Privacy
 - Chat text and uploads are **never committed**. The workflow reads the Telegram payload from `$GITHUB_EVENT_PATH` and never echoes it or puts it in `env:` (env blocks show up in public Actions logs).

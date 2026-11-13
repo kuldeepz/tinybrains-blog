@@ -1,9 +1,12 @@
 // Smoke test of the webhook handler with fetch() stubbed (no network).
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
+import { createHash } from "node:crypto";
 import worker from "../src/index.ts";
 
-const env = { TELEGRAM_BOT_TOKEN: "tok", TELEGRAM_WEBHOOK_SECRET: "sec", TELEGRAM_CHAT_ID: "42", GITHUB_TOKEN: "gh", GITHUB_REPO: "o/r", SITE_URL: "https://x" };
+const kv = new Map<string, string>();
+const env = { TELEGRAM_BOT_TOKEN: "tok", TELEGRAM_WEBHOOK_SECRET: "sec", TELEGRAM_CHAT_ID: "42", GITHUB_TOKEN: "gh", GITHUB_REPO: "o/r", SITE_URL: "https://x",
+  APPROVALS: { get: async (k: string) => kv.get(k) ?? null, put: async (k: string, v: string) => void kv.set(k, v) } };
 let calls: { url: string; method: string; body: any }[] = [];
 let topics = { version: 1, next_id: 1, topics: [] as any[] };
 
@@ -54,4 +57,19 @@ test("free text and /write dispatch to Actions", async () => {
 test("approve button merges PR", async () => {
   await post({ callback_query: { id: "q", data: "approve:12", from: { id: 42 }, message: { message_id: 5, chat: { id: 42 } } } });
   assert.ok(calls.some((c) => c.url.endsWith("/pulls/12/merge") && c.method === "PUT"));
+});
+
+test("paid approval: button stores answer, poll needs auth", async () => {
+  const key = "run-1-2";
+  const auth = createHash("sha256").update(`tok:${key}`).digest("hex");
+  const get = (h: Record<string, string>) => worker.fetch(new Request(`https://w/approval/${key}`, { headers: h }), env as any);
+  assert.equal(await (await get({ "X-Approval-Auth": auth })).text(), "pending");
+  assert.equal((await get({ "X-Approval-Auth": "wrong" })).status, 403);
+  await post({ callback_query: { id: "q", data: `paid:${key}:yes`, from: { id: 42 }, message: { message_id: 5, chat: { id: 42 } } } });
+  assert.equal(await (await get({ "X-Approval-Auth": auth })).text(), "yes");
+});
+
+test("paid approval ignored from other users", async () => {
+  await post({ callback_query: { id: "q", data: "paid:run-x:yes", from: { id: 7 }, message: { message_id: 5, chat: { id: 7 } } } });
+  assert.equal(kv.get("run-x"), undefined);
 });

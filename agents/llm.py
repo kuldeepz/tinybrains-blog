@@ -22,7 +22,8 @@ class LLMError(RuntimeError):
 
 @dataclass
 class RoleConfig:
-    model: str
+    free: list[str]
+    paid: str | None = None
     azure: str = "large"
     temperature: float = 0.4
     max_tokens: int = 8000
@@ -33,17 +34,27 @@ def load_role(role: str) -> RoleConfig:
     cfg = yaml.safe_load(MODELS_FILE.read_text())
     base = dict(cfg.get("defaults", {}))
     base.update(cfg["roles"].get(role, cfg["roles"]["editor"]))
-    override = env(f"MODEL_{role.upper()}")
-    if override:
-        base["model"] = override
+    if "model" in base and "free" not in base:  # legacy single-model config
+        base["paid"] = base.pop("model")
+        base["free"] = []
+    if env(f"MODEL_{role.upper()}_FREE") is not None:
+        base["free"] = [m.strip() for m in env(f"MODEL_{role.upper()}_FREE", "").split(",") if m.strip()]
+    if env(f"MODEL_{role.upper()}_PAID"):
+        base["paid"] = env(f"MODEL_{role.upper()}_PAID")
+    base.setdefault("free", [])
     return RoleConfig(**{k: v for k, v in base.items() if k in RoleConfig.__annotations__})
 
 
 class LLM:
-    """Shared client. `force` = "openrouter" | "azure" restricts providers (used in tests)."""
+    """Shared client: free OpenRouter models -> (owner approval) -> paid OpenRouter -> Azure OpenAI.
 
-    def __init__(self, force: str | None = None):
+    `approver` must have `async allow_paid(role, model, reason) -> bool`. Without one, paid use is denied
+    unless TB_PAID_APPROVED=1.
+    """
+
+    def __init__(self, force: str | None = None, approver=None):
         self.force = force or env("TB_LLM_FORCE")
+        self.approver = approver
         self._or = None
         self._az = None
         if env("OPENROUTER_API_KEY") and self.force != "azure":
@@ -64,36 +75,68 @@ class LLM:
             )
         if not (self._or or self._az):
             raise LLMError("No LLM provider configured: set OPENROUTER_API_KEY and/or AZURE_OPENAI_API_KEY + AZURE_OPENAI_ENDPOINT")
-        self.usage: dict[str, int] = {"calls": 0, "fallbacks": 0, "prompt_tokens": 0, "completion_tokens": 0}
+        self.usage: dict[str, Any] = {"calls": 0, "free_calls": 0, "paid_calls": 0, "fallbacks": 0,
+                                      "prompt_tokens": 0, "completion_tokens": 0, "models": {}}
+
+    async def _paid_ok(self, role: str, model: str, reason: str) -> bool:
+        if env("TB_PAID_APPROVED") == "1":
+            return True
+        if self.approver is None:
+            return False
+        return await self.approver.allow_paid(role, model, reason)
 
     async def chat(self, role: str, system: str, user: str | list[dict[str, Any]], *, json_mode: bool = False) -> str:
         rc = load_role(role)
         messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
         errors: list[str] = []
-        if self._or:
+        # 1) free models (OpenRouter tries the list in order)
+        if self._or and rc.free:
             try:
-                return await self._call_openrouter(rc, messages, json_mode)
-            except Exception as e:  # noqa: BLE001 - any provider failure triggers fallback
-                errors.append(f"openrouter[{rc.model}]: {type(e).__name__}: {str(e)[:200]}")
-                log.warning("OpenRouter failed for %s, falling back to Azure: %s", role, errors[-1])
+                return await self._call_openrouter(rc, rc.free, messages, json_mode, paid=False)
+            except Exception as e:  # noqa: BLE001 - any failure moves on
+                errors.append(f"free[{rc.free[0]}…]: {type(e).__name__}: {str(e)[:160]}")
+                log.warning("free models failed for %s: %s", role, errors[-1])
+        # 2) paid models only with owner approval
+        paid_label = rc.paid or "Azure OpenAI"
+        if not await self._paid_ok(role, paid_label, errors[-1] if errors else "no free model configured"):
+            raise LLMError("paid models not approved; " + "; ".join(errors))
+        if self._or and rc.paid:
+            try:
+                out = await self._call_openrouter(rc, [rc.paid], messages, json_mode, paid=True)
+                self.usage["fallbacks"] += bool(errors)
+                return out
+            except Exception as e:  # noqa: BLE001
+                errors.append(f"openrouter[{rc.paid}]: {type(e).__name__}: {str(e)[:160]}")
+                log.warning("paid OpenRouter failed for %s: %s", role, errors[-1])
         if self._az:
             try:
                 out = await self._call_azure(rc, messages, json_mode)
-                if errors:
-                    self.usage["fallbacks"] += 1
+                self.usage["fallbacks"] += 1
                 return out
             except Exception as e:  # noqa: BLE001
-                errors.append(f"azure: {type(e).__name__}: {str(e)[:200]}")
+                errors.append(f"azure: {type(e).__name__}: {str(e)[:160]}")
         raise LLMError("; ".join(errors))
 
-    async def _call_openrouter(self, rc: RoleConfig, messages, json_mode: bool) -> str:
+    async def _call_openrouter(self, rc: RoleConfig, models: list[str], messages, json_mode: bool, *, paid: bool) -> str:
         extra: dict[str, Any] = {}
+        if len(models) > 1:
+            extra["models"] = models[1:]  # OpenRouter native fallback list
         if rc.web:
             extra["plugins"] = [{"id": "web", "max_results": 6}]
-        kwargs: dict[str, Any] = dict(model=rc.model, messages=messages, temperature=rc.temperature, max_tokens=rc.max_tokens)
+        kwargs: dict[str, Any] = dict(model=models[0], messages=messages, temperature=rc.temperature, max_tokens=rc.max_tokens)
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
-        resp = await self._or.chat.completions.create(**kwargs, extra_body=extra or None)
+        try:
+            resp = await self._or.chat.completions.create(**kwargs, extra_body=extra or None)
+        except Exception as e:  # some models don't support response_format -> retry without (we parse JSON ourselves)
+            if json_mode and ("response_format" in str(e) or "No endpoints" in str(e) or "structured" in str(e).lower()):
+                kwargs.pop("response_format")
+                resp = await self._or.chat.completions.create(**kwargs, extra_body=extra or None)
+            else:
+                raise
+        self.usage["paid_calls" if paid else "free_calls"] += 1
+        used = getattr(resp, "model", None) or models[0]
+        self.usage["models"][used] = self.usage["models"].get(used, 0) + 1
         return self._content(resp)
 
     async def _call_azure(self, rc: RoleConfig, messages, json_mode: bool) -> str:
@@ -106,6 +149,8 @@ class LLM:
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
         resp = await self._az.chat.completions.create(**kwargs)
+        self.usage["paid_calls"] += 1
+        self.usage["models"][f"azure:{dep}"] = self.usage["models"].get(f"azure:{dep}", 0) + 1
         return self._content(resp)
 
     def _content(self, resp) -> str:
@@ -151,3 +196,15 @@ async def gather_limited(limit: int, coros):
             return await c
 
     return await asyncio.gather(*(run(c) for c in coros), return_exceptions=True)
+
+
+_APPROVER = None
+
+
+def make_llm() -> LLM:
+    """LLM wired to the process-wide Telegram approver (one paid-approval question per run)."""
+    global _APPROVER
+    if _APPROVER is None:
+        from .approval import Approver
+        _APPROVER = Approver()
+    return LLM(approver=_APPROVER)

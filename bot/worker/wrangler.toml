@@ -7,5 +7,10 @@ workers_dev = true
 GITHUB_REPO = "kuldeepz/tinybrains-blog"
 SITE_URL = "https://kuldeepz.github.io/tinybrains-blog"
 
+# KV for paid-model approvals. The deploy workflow fills in the id (creates the namespace if needed).
+[[kv_namespaces]]
+binding = "APPROVALS"
+id = "__APPROVALS_KV_ID__"
+
 # Secrets (set with `npx wrangler secret put NAME`):
 #   TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET, TELEGRAM_CHAT_ID, GITHUB_TOKEN

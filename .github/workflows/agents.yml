@@ -39,6 +39,8 @@ jobs:
       GDRIVE_REFRESH_TOKEN: ${{ secrets.GDRIVE_REFRESH_TOKEN }}
       GH_TOKEN: ${{ github.token }}
       TB_MAX_PARALLEL: ${{ vars.TB_MAX_PARALLEL || '4' }}
+      TB_BOT_URL: ${{ vars.TB_BOT_URL }}                 # Cloudflare worker, used to poll paid-model approvals
+      TB_APPROVAL_TIMEOUT: ${{ vars.TB_APPROVAL_TIMEOUT || '1800' }}
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
@@ -52,6 +54,11 @@ jobs:
           (cd site && npm ci --silent)
           git config user.name "tinybrains-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Model overrides from repo variables (MODEL_<ROLE>_FREE / MODEL_<ROLE>_PAID)
+        env:
+          VARS: ${{ toJSON(vars) }}
+        run: |
+          echo "$VARS" | python -c "import json,os,sys; [open(os.environ['GITHUB_ENV'],'a').write(f'{k}={v}\n') for k,v in json.load(sys.stdin).items() if k.startswith('MODEL_')]"
       - name: Telegram event
         if: github.event_name == 'repository_dispatch'
         run: |
