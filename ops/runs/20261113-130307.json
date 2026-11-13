@@ -1,0 +1,50 @@
+{
+  "run": "20261113-130307",
+  "mode": "senior",
+  "usage": {
+    "calls": 11,
+    "free_calls": 1,
+    "paid_calls": 10,
+    "fallbacks": 0,
+    "prompt_tokens": 92972,
+    "completion_tokens": 45428,
+    "models": {
+      "baidu/ernie-5.5-flash-preview:free": 1,
+      "azure:gpt-5.4-mini": 6,
+      "azure:gpt-6.1-sol": 4
+    }
+  },
+  "posts": [
+    {
+      "topic": "T001",
+      "slug": "how-kv-cache-speeds-up-llm-inference-without-recomputing-past-tokens",
+      "ok": true,
+      "pr": 1,
+      "error": "",
+      "scores": [
+        7,
+        7,
+        6
+      ],
+      "log": [
+        "[team-1/PM#1] brief ready: 'How KV Cache Speeds Up LLM Inference Without Recomputing Past Tokens' [LLMs/Practitioner/Article]",
+        "[team-1/Researcher#1] research done, 5 sources",
+        "[team-1/Architect#1] architect brief ready (2877 words)",
+        "[team-1/Writer#1] draft written (2771 words)",
+        "[team-1/Editor#1] edit pass done",
+        "[team-1/Designer#1] layout pass done, cover generated, 1 diagram(s)",
+        "[team-1/Reviewer#1] score 7/10 -> changes requested",
+        "[team-1/Tester#1] static checks passed",
+        "[team-1/Editor#1] revised per review",
+        "[team-1/Reviewer#1] score 7/10 -> changes requested",
+        "[team-1/Tester#1] static checks passed",
+        "[team-1/Editor#1] revised per review",
+        "[team-1/Reviewer#1] score 6/10 -> changes requested",
+        "[team-1/Tester#1] static checks passed",
+        "[team-1/Head] review rounds exhausted (score 6); sending to owner with notes",
+        "[team-1/Tester#1] static checks passed",
+        "[team-1/Publisher] PR #1 opened"
+      ]
+    }
+  ]
+}
