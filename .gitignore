@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.astro/
+.wrangler/
+.dev.vars
+.env
+.env.*
+__pycache__/
+*.pyc
+.venv/
+.DS_Store
+# never commit private material
+*.service-account.json
+private/

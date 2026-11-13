@@ -1,0 +1,221 @@
+---
+title: "The Tool-Calling Agent Loop, From Scratch"
+description: "Build a minimal, production-shaped agent in ~80 lines of Python: tool schemas, the request–execute–respond loop, parallel calls, errors and hard stop conditions."
+date: 2026-11-12
+topic: "Agents"
+level: "Practitioner"
+type: "Tutorial"
+tags: ["tool use", "function calling", "python", "anthropic", "agents"]
+tldr: "An agent is a loop: send messages plus tool schemas, execute every tool call the model requests, append the results, and repeat until the model stops asking. Make it reliable by returning errors as data, answering every tool call in one turn, and enforcing a hard step budget."
+takeaways:
+  - "The agent is the loop, not the model — keep it small, deterministic and logged."
+  - "Answer every tool_use block in the next user turn, matched by tool_use_id."
+  - "Return tool failures as is_error results instead of raising; the model can recover."
+  - "Always cap steps and wall-clock time; unbounded loops are the #1 production incident."
+cover: "covers/tool-calling-agent-loop.svg"
+sources:
+  - title: "Anthropic docs — Tool use with Claude"
+    url: "https://docs.anthropic.com/en/docs/build-with-claude/tool-use"
+  - title: "OpenAI docs — Function calling"
+    url: "https://platform.openai.com/docs/guides/function-calling"
+  - title: "JSON Schema reference"
+    url: "https://json-schema.org/understanding-json-schema"
+  - title: "Yao et al. (2022) — ReAct: Synergizing Reasoning and Acting in Language Models"
+    url: "https://arxiv.org/abs/2210.03629"
+version: 1
+---
+
+Most "agent frameworks" wrap the same twenty lines of control flow. If you write those lines yourself once, every framework becomes easier to debug — and for many products you won't need one at all. In this tutorial we build a complete tool-calling agent against the Anthropic Messages API, then harden it for production.
+
+## What a tool call actually is
+
+A language model can't run code. What it *can* do is emit a structured request that says "call `get_weather` with `city = "Pune"`". Your program executes that request, sends the result back, and the model continues. That round trip is the entire mechanism.
+
+Each tool is described to the model with three things:
+
+| Field | Purpose | Tip |
+| --- | --- | --- |
+| `name` | Identifier the model uses to call the tool | Verb-first, snake_case: `search_orders` |
+| `description` | When and why to use it — the model reads this like documentation | Say what it **doesn't** do, too |
+| `input_schema` | A JSON Schema for the arguments | Use `enum`, `required` and tight types |
+
+<Callout type="tip">
+Descriptions are prompts. A two-sentence description that names the edge cases ("returns at most 20 orders; dates are UTC") prevents more bad calls than any amount of system-prompt pleading.
+</Callout>
+
+## Defining tools
+
+We'll give the agent two tools: a weather lookup and a calculator. Each tool is a plain Python function plus a schema.
+
+```python title="tools.py" {5-17}
+import ast
+import operator as op
+import httpx
+
+TOOLS = [
+    {
+        "name": "get_weather",
+        "description": "Current weather for a city. Returns temperature in °C and a short condition. Does not forecast.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "city": {"type": "string", "description": "City name, e.g. 'Pune'"},
+            },
+            "required": ["city"],
+        },
+    },
+    {
+        "name": "calculate",
+        "description": "Evaluate an arithmetic expression with + - * / ** and parentheses. No variables or functions.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"expression": {"type": "string"}},
+            "required": ["expression"],
+        },
+    },
+]
+
+_OPS = {ast.Add: op.add, ast.Sub: op.sub, ast.Mult: op.mul, ast.Div: op.truediv, ast.Pow: op.pow, ast.USub: op.neg}
+
+def _eval(node):
+    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+        return node.value
+    if isinstance(node, ast.BinOp) and type(node.op) in _OPS:
+        return _OPS[type(node.op)](_eval(node.left), _eval(node.right))
+    if isinstance(node, ast.UnaryOp) and type(node.op) in _OPS:
+        return _OPS[type(node.op)](_eval(node.operand))
+    raise ValueError("unsupported expression")
+
+def calculate(expression: str) -> str:
+    return str(_eval(ast.parse(expression, mode="eval").body))
+
+def get_weather(city: str) -> str:
+    # Open-Meteo is free and keyless: geocode, then fetch current conditions.
+    geo = httpx.get("https://geocoding-api.open-meteo.com/v1/search",
+                    params={"name": city, "count": 1}, timeout=5).json()
+    if not geo.get("results"):
+        raise LookupError(f"unknown city: {city}")
+    loc = geo["results"][0]
+    wx = httpx.get("https://api.open-meteo.com/v1/forecast",
+                   params={"latitude": loc["latitude"], "longitude": loc["longitude"],
+                           "current": "temperature_2m,weather_code"}, timeout=5).json()
+    cur = wx["current"]
+    return f"{cur['temperature_2m']}°C (WMO code {cur['weather_code']}) in {loc['name']}"
+
+REGISTRY = {"get_weather": get_weather, "calculate": calculate}
+```
+
+Note the calculator: it walks the syntax tree and only allows arithmetic nodes. Never pass model output to `eval()` — tool arguments are untrusted input, exactly like a form field on a public website.
+
+## The loop
+
+Here is the core. Read it top to bottom; everything else in this article is refinement.
+
+```python title="agent.py" {14,22-31}
+import os
+import anthropic
+from tools import TOOLS, REGISTRY
+
+client = anthropic.Anthropic()          # reads ANTHROPIC_API_KEY
+MODEL = os.environ["MODEL"]             # any current tool-capable model id
+MAX_STEPS = 8
+
+def run_agent(user_prompt: str) -> str:
+    messages = [{"role": "user", "content": user_prompt}]
+    for step in range(MAX_STEPS):
+        resp = client.messages.create(
+            model=MODEL, max_tokens=1024, tools=TOOLS, messages=messages,
+        )
+        messages.append({"role": "assistant", "content": resp.content})
+
+        if resp.stop_reason != "tool_use":
+            # Final answer: concatenate the text blocks.
+            return "".join(b.text for b in resp.content if b.type == "text")
+
+        # Execute EVERY tool call in this turn, then answer them together.
+        results = []
+        for block in resp.content:
+            if block.type != "tool_use":
+                continue
+            try:
+                output = REGISTRY[block.name](**block.input)
+                results.append({"type": "tool_result", "tool_use_id": block.id, "content": output})
+            except Exception as e:  # errors are data, not crashes
+                results.append({"type": "tool_result", "tool_use_id": block.id,
+                                "content": f"{type(e).__name__}: {e}", "is_error": True})
+        messages.append({"role": "user", "content": results})
+
+    raise RuntimeError(f"agent did not finish within {MAX_STEPS} steps")
+
+if __name__ == "__main__":
+    print(run_agent("What's the weather in Pune, and what is 31 * 1.8 + 32?"))
+```
+
+Three details carry most of the weight:
+
+1. **The assistant turn is appended verbatim.** The `tool_use` blocks must stay in history so the following `tool_result` blocks have something to refer to.
+2. **`stop_reason` drives control flow.** `"tool_use"` means "run my tools and call me back"; `"end_turn"` means the model is done. (`"max_tokens"` means it was cut off — treat that as an error, not an answer.)
+3. **Every `tool_use` gets exactly one `tool_result`** with the matching `tool_use_id`, all inside a single user message.
+
+<Terminal title="zsh — agent.py" lines={`$ MODEL=<your-model-id> python agent.py
+→ step 1  tool_use  get_weather(city="Pune")
+→ step 1  tool_use  calculate(expression="31 * 1.8 + 32")
+✓ step 1  2 tool results returned
+→ step 2  end_turn
+It's currently about 31°C in Pune. 31 × 1.8 + 32 = 87.8, so roughly 88°F.`} />
+
+The trace above is illustrative logging you'd add yourself; notice that the model asked for **both** tools in one turn. That's parallel tool use, and the loop handles it for free because it iterates over every block.
+
+## Hardening it for production
+
+The twenty-line version works in a demo. These are the changes that keep it working at 3 a.m.
+
+### Bound everything
+
+`MAX_STEPS` stops infinite loops, but you also want a wall-clock deadline and a token budget. A model that keeps calling a failing tool with slightly different arguments is the classic runaway.
+
+```python title="agent.py (excerpt)"
+import time
+
+DEADLINE_S = 60
+
+start = time.monotonic()
+for step in range(MAX_STEPS):
+    if time.monotonic() - start > DEADLINE_S:
+        raise TimeoutError("agent exceeded wall-clock budget")
+    ...
+```
+
+<Callout type="warning">
+Retries multiply cost and side effects. Before you let an agent call anything that writes — send an email, create a ticket, charge a card — make the tool **idempotent** (accept a client-generated request ID and dedupe on it), and consider requiring human confirmation.
+</Callout>
+
+### Make errors legible
+
+When a tool fails, return a short, specific message with `is_error: true`. Models are good at recovering from `LookupError: unknown city: Pnue` — they'll fix the typo and retry. They are bad at recovering from a 400-line stack trace, and your program is worse at recovering from an unhandled exception mid-loop.
+
+### Validate arguments before executing
+
+The schema guides the model, but nothing guarantees it is respected. Validate with `jsonschema` or Pydantic at the boundary and return validation failures as `is_error` results. It costs microseconds and turns silent misbehaviour into a visible, recoverable error.
+
+### Log the transcript
+
+Persist `messages` for every run, keyed by a run ID. When something goes wrong, the transcript *is* the stack trace. Add the step number, tool name, latency and token usage (`resp.usage`) to each entry and you have most of what an agent tracing product gives you.
+
+<PullQuote>
+The agent is the loop, not the model. Keep the loop boring, and the model is free to be clever.
+</PullQuote>
+
+## Common failure modes
+
+| Symptom | Likely cause | Fix |
+| --- | --- | --- |
+| API error about missing tool results | A `tool_use` block wasn't answered | Answer every block, in one user message |
+| Loop never ends | Tool keeps failing the same way | Step + time caps; make the error message actionable |
+| Wrong tool chosen | Overlapping descriptions | Make descriptions mutually exclusive; say when *not* to use a tool |
+| Hallucinated arguments | Loose schema | `enum`s, `required`, formats; validate before executing |
+| Truncated final answer | `stop_reason == "max_tokens"` | Raise `max_tokens` or ask for a shorter answer |
+
+## Where to go from here
+
+Once this loop is solid, the "advanced" agent patterns are small additions: a planner is a tool that writes a plan into the transcript; memory is a tool that reads and writes a store; a multi-agent system is a tool whose implementation is another `run_agent` call. Start with the loop, measure where it fails, and add structure only where the transcript tells you to.

@@ -1,0 +1,10 @@
+name = "tinybrains-bot"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+[vars]
+GITHUB_REPO = "kuldeepz/tinybrains-blog"
+SITE_URL = "https://kuldeepz.github.io/tinybrains-blog"
+
+# Secrets (set with `npx wrangler secret put NAME`):
+#   TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET, TELEGRAM_CHAT_ID, GITHUB_TOKEN

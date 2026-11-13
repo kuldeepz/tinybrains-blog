@@ -1,0 +1,140 @@
+"""Runs one team per topic concurrently, then a shared build test and sequential publishing."""
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+from datetime import datetime, timezone
+
+from . import gitops
+from .drive import Drive
+from .intake import load_private_context
+from .llm import LLM, gather_limited
+from .roles.base import Post
+from .roles.designer import Designer
+from .roles.editor import Editor
+from .roles.head import Head
+from .roles.pm import PM
+from .roles.publisher import Publisher
+from .roles.reviewer import Reviewer
+from .roles.tester import Tester, build_site, remove_files, write_files
+from .roles.writer import Researcher, Writer
+from .settings import MAX_PARALLEL, MAX_REVIEW_ROUNDS, RUNS_DIR, ROOT
+from .telegram import Telegram, esc
+from .topics import Tracker
+
+log = logging.getLogger("tb.orchestrator")
+
+
+async def team_pipeline(llm: LLM, post: Post, published: list[dict], tg: Telegram) -> Post:
+    i = post.team.split("-")[-1]
+    pm, res, wr = PM(llm, f"PM#{i}"), Researcher(llm, f"Researcher#{i}"), Writer(llm, f"Writer#{i}")
+    ed, de, rv, te = Editor(llm, f"Editor#{i}"), Designer(llm, f"Designer#{i}"), Reviewer(llm, f"Reviewer#{i}"), Tester(llm, f"Tester#{i}")
+    try:
+        await pm.plan(post, published)
+        await res.research(post)
+        await wr.write(post)
+        await ed.edit(post)
+        await de.design(post)
+        for rnd in range(MAX_REVIEW_ROUNDS + 1):
+            r = await rv.review(post)
+            problems = await te.static(post)
+            if r["approved"] and not problems:
+                break
+            if rnd == MAX_REVIEW_ROUNDS:
+                post.note("Head", f"review rounds exhausted (score {r.get('score')}); sending to owner with notes")
+                break
+            await ed.edit(post, (r.get("required_changes") or r.get("issues") or []) + problems)
+        if te_problems := await te.static(post):
+            raise RuntimeError(f"unfixable: {te_problems}")
+        tg.send(f"🧩 {esc(post.team)} finished <b>{esc(post.meta.get('title', post.brief.get('title', '')))}</b> "
+                f"(review {post.reviews[-1].get('score', '?')}/10)")
+    except Exception as e:  # noqa: BLE001 - isolate team failures
+        post.ok, post.error = False, f"{type(e).__name__}: {e}"
+        post.note("Head", f"team failed: {post.error}")
+    return post
+
+
+async def run_write(topic_ids: list[str], *, open_pr: bool = True, build: bool = True) -> list[Post]:
+    llm, tg, drive = LLM(), Telegram(), Drive()
+    head = Head(llm)
+
+    def start(t: Tracker):
+        out = []
+        for tid in topic_ids:
+            topic = t.get(tid)
+            if topic and topic["status"] in ("idea", "queued", "rejected", "in_progress"):
+                t.set(topic, "in_progress")
+                out.append(dict(topic))
+        return out, [dict(p) for p in t.by_status("published")]
+
+    topics, published = gitops.sync_tracker(start, f"tracker: start {', '.join(topic_ids)}")
+    if not topics:
+        tg.send("Nothing to write: those topics are unknown or already in review/published.")
+        return []
+    tg.send(f"🚀 {esc(head.team_plan(len(topics), MAX_PARALLEL))}\n" + "\n".join(f"• {t['id']} {esc(t['title'])}" for t in topics))
+
+    posts = []
+    for n, topic in enumerate(topics, 1):
+        ctx = await load_private_context(drive, llm, topic) if topic.get("private_files") else ""
+        posts.append(Post(topic=topic, team=f"team-{n}", context=ctx))
+    await gather_limited(MAX_PARALLEL, [team_pipeline(llm, p, published, tg) for p in posts])
+
+    # dedupe slugs between parallel teams
+    seen: set[str] = set()
+    for p in posts:
+        while p.ok and p.slug in seen:
+            p.slug += "-2"
+        seen.add(p.slug)
+
+    ok = [p for p in posts if p.ok]
+    if build and ok:
+        tester = Tester(llm, "Tester")
+        for p in ok:
+            write_files(p)
+        passed, out = await build_site()
+        if not passed:
+            for p in ok:
+                if p.slug in out:
+                    await tester.fix_build(p, out)
+                    write_files(p)
+            passed, out = await build_site()
+        if not passed:  # isolate: drop the posts named in the error, else drop all
+            culprits = [p for p in ok if p.slug in out] or ok
+            for p in culprits:
+                p.ok, p.error = False, "site build failed: " + out[-400:]
+                remove_files(p)
+        for p in posts:
+            remove_files(p)  # publisher rewrites the files onto each post branch
+
+    pub = Publisher(llm, tg, "Publisher", open_pr=open_pr)
+    for p in posts:
+        if p.ok:
+            try:
+                await pub.publish(p)
+            except Exception as e:  # noqa: BLE001
+                p.ok, p.error = False, f"publish failed: {e}"
+
+    run_id = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    run_file = RUNS_DIR / f"{run_id}.json"
+    RUNS_DIR.mkdir(parents=True, exist_ok=True)
+    run_file.write_text(json.dumps({
+        "run": run_id, "usage": llm.usage,
+        "posts": [{"topic": p.topic["id"], "slug": p.slug, "ok": p.ok, "pr": p.pr, "error": p.error[:300],
+                   "scores": [r.get("score") for r in p.reviews], "log": p.log} for p in posts],
+    }, indent=2) + "\n")
+
+    def finish(t: Tracker):
+        for p in posts:
+            topic = t.get(p.topic["id"])
+            if not topic:
+                continue
+            if p.ok and (p.pr or not open_pr):
+                t.set(topic, "in_review" if p.pr else "in_progress", slug=p.slug, pr=p.pr,
+                      title=p.meta.get("title") or topic["title"])
+            else:
+                t.set(topic, "idea", notes=(topic.get("notes", "") + f"\n[last run failed: {p.error[:150]}]").strip()[:1000])
+
+    gitops.sync_tracker(finish, f"tracker: run {run_id}", [str(run_file.relative_to(ROOT))])
+    tg.send(esc(Head.summary(posts)))
+    return posts

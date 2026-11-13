@@ -1,0 +1,33 @@
+---
+// Terminal-style `$ subscribe --weekly` box. No backend: posts to SITE.newsletterAction
+// when configured, otherwise shows a "coming soon" message on submit.
+import { SITE } from '../config';
+
+interface Props {
+  chrome?: boolean; // show the ~/tinybrains — zsh window bar
+  sub?: string; // optional dim second line
+  command?: string;
+  idSuffix?: string;
+}
+const { chrome = true, sub, command = 'subscribe --weekly', idSuffix = Math.random().toString(36).slice(2, 7) } = Astro.props;
+const action = SITE.newsletterAction;
+const handle = SITE.name.split('.')[0];
+const inputId = `sub-email-${idSuffix}`;
+---
+<div class="term">
+  {chrome && (
+    <div class="chrome" aria-hidden="true"><i></i><i></i><i></i><span>~/{handle} — zsh</span></div>
+  )}
+  <div class="body">
+    <div><span class="ps">$</span> {command}<span class="tcur" aria-hidden="true"></span></div>
+    {sub && <div class="dim">{sub}</div>}
+    <form class="sub-form" action={action || undefined} method="post" target={action ? '_blank' : undefined} data-action={action}>
+      <div class="sub-row">
+        <label class="key" for={inputId}>email:</label>
+        <input id={inputId} type="email" name="email" required placeholder="you@company.com" autocomplete="email" />
+        <button type="submit">↵ run</button>
+      </div>
+    </form>
+    <div class="sub-msg" role="status" aria-live="polite" hidden></div>
+  </div>
+</div>

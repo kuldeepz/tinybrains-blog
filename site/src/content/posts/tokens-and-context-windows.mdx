@@ -1,0 +1,146 @@
+---
+title: "Tokens and Context Windows, Explained"
+description: "What a token actually is, why models count in tokens instead of words, and how to budget a context window so your prompt, documents and answer all fit."
+date: 2026-10-30
+topic: "LLMs"
+level: "Beginner"
+type: "Article"
+tags: ["tokens", "tokenization", "context window", "bpe", "fundamentals"]
+tldr: "Models read and write tokens — chunks of text learned by a tokenizer — not words or characters. In English a token averages about four characters, so 100 tokens is roughly 75 words. The context window is a single token budget shared by your instructions, documents, conversation history and the model's answer."
+takeaways:
+  - "A token is a learned chunk of text; in English, about 4 characters or ¾ of a word."
+  - "Code, numbers and non-English text usually cost more tokens per word."
+  - "Input and output share one context window — reserve room for the answer."
+  - "More context is not free: it costs money, adds latency and can dilute attention."
+cover: "covers/tokens-and-context-windows.svg"
+sources:
+  - title: "Sennrich, Haddow & Birch (2016) — Neural Machine Translation of Rare Words with Subword Units (BPE)"
+    url: "https://arxiv.org/abs/1508.07909"
+  - title: "OpenAI — What are tokens and how to count them?"
+    url: "https://help.openai.com/en/articles/4936856-what-are-tokens-and-how-to-count-them"
+  - title: "tiktoken — fast BPE tokenizer"
+    url: "https://github.com/openai/tiktoken"
+  - title: "Liu et al. (2023) — Lost in the Middle: How Language Models Use Long Contexts"
+    url: "https://arxiv.org/abs/2307.03172"
+  - title: "Anthropic docs — Token counting"
+    url: "https://docs.anthropic.com/en/docs/build-with-claude/token-counting"
+version: 1
+---
+
+Every limit you hit when building with language models — the maximum prompt size, the price per request, the length of an answer — is measured in **tokens**. Once you can estimate tokens in your head, a lot of confusing behaviour suddenly makes sense.
+
+## What is a token?
+
+A model doesn't see letters or words. Before your text reaches the model, a **tokenizer** splits it into pieces from a fixed vocabulary and replaces each piece with an integer ID. The model reads a sequence of IDs and predicts the next ID, one at a time.
+
+The vocabulary is *learned* from a large text corpus, most commonly with a method called **byte-pair encoding (BPE)**. BPE starts from single bytes and repeatedly merges the most frequent adjacent pair into a new token, until the vocabulary reaches a target size — typically tens of thousands to a couple of hundred thousand entries. The result:
+
+- Common words become a single token: `the`, `model`, `window`.
+- Rarer words are split into familiar pieces: `tokenization` might become `token` + `ization`.
+- Leading spaces are usually part of the token, so ` cat` and `cat` are different tokens.
+- Anything can be represented, because the fallback is individual bytes.
+
+<Callout type="note">
+Different model families use different tokenizers, so the same sentence can have a different token count on different models. Always count with the tokenizer (or token-counting endpoint) of the model you are actually calling.
+</Callout>
+
+## Rules of thumb
+
+For ordinary English prose, the widely quoted approximations hold up well:
+
+| Text | Approximate tokens |
+| --- | --- |
+| 1 token | ~4 characters, ~¾ of a word |
+| 100 words | ~130–135 tokens |
+| 1 page (~500 words) | ~650–700 tokens |
+| A 300-page book (~100k words) | ~130k–135k tokens |
+
+That ¾-word ratio is why this site estimates reading cost as **words × 1.33** — the "~3k tokens" label on each article.
+
+These ratios get worse — more tokens per word — for:
+
+- **Source code**, where indentation, punctuation and identifiers like `get_user_by_id` split into many pieces.
+- **Numbers and IDs**, which are often chopped into short digit groups.
+- **Languages other than English**, especially those underrepresented in the tokenizer's training data or written in non-Latin scripts.
+
+<Callout type="tip">
+Never estimate a production budget from the rule of thumb alone. Take a representative sample of real inputs, count them with the real tokenizer, and use a high percentile (p95), not the average.
+</Callout>
+
+## Counting tokens yourself
+
+For OpenAI models, the open-source `tiktoken` library exposes the same tokenizers the models use:
+
+```python title="count_tokens.py"
+import tiktoken
+
+enc = tiktoken.get_encoding("o200k_base")   # encoding used by GPT-4o-family models
+
+text = "Tokenization splits text into pieces."
+ids = enc.encode(text)
+
+print(len(ids))                          # number of tokens
+print([enc.decode([i]) for i in ids])    # the individual pieces
+```
+
+Run it on a few of your own prompts and on a block of code — the difference in tokens-per-word is the fastest way to build intuition. Other providers offer equivalent tools; Anthropic, for example, has a token-counting API endpoint, because its tokenizer isn't distributed as a library.
+
+When you just need a quick estimate in the browser, the character heuristic is fine:
+
+```ts title="estimate.ts"
+/** Rough token estimate for English prose: ~4 characters per token. */
+export function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+```
+
+## The context window is a shared budget
+
+The **context window** is the maximum number of tokens the model can process in a single request — everything it reads *plus* everything it writes. A typical request spends that budget on:
+
+```text
+┌──────────────────────── context window ─────────────────────────┐
+│ system prompt │ tool definitions │ documents │ history │ answer │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+Two separate limits usually apply:
+
+1. **The context window**, which covers input and output together.
+2. **A maximum output length** (`max_tokens` or similar), which is usually much smaller than the window.
+
+If your input is close to the window size, there may be no room left for the answer — the request fails, or the answer is cut off mid-sentence. Reserve output space explicitly.
+
+<Terminal title="budget.txt" lines={`# example budget for a RAG request
+system prompt + tool schemas      1,200 tokens
+retrieved documents (8 × 600)     4,800 tokens
+conversation history              2,000 tokens
+reserved for the answer           1,000 tokens
+─────────────────────────────────────────────
+total                             9,000 tokens`} />
+
+## Bigger windows aren't free
+
+Modern models accept very long contexts, but filling them has real costs:
+
+| Cost | Why it happens |
+| --- | --- |
+| **Money** | Providers charge per input token and (more) per output token. |
+| **Latency** | The model must process every input token before it emits the first output token. |
+| **Quality** | Relevant facts buried in a long context can be used less reliably than facts near the start or end. |
+
+That last point was measured in the "Lost in the Middle" study: on multi-document question answering, models did best when the relevant passage sat at the beginning or end of the context and noticeably worse when it was in the middle. Newer models handle long contexts better, but the lesson still holds — **put the most important material where it is easiest to find, and don't include what you don't need.**
+
+<PullQuote>
+Treat the context window like RAM, not a hard drive: load what the task needs right now.
+</PullQuote>
+
+## A practical checklist
+
+- Count tokens with the target model's tokenizer, on real data, at p95.
+- Reserve an explicit slice of the window for the answer.
+- Retrieve fewer, better documents rather than many marginal ones.
+- Summarise or drop old conversation turns instead of sending the full history forever.
+- Put instructions and the most relevant evidence near the start or end of the prompt.
+
+Tokens are the unit of cost, speed and capacity for everything you build with language models. Get comfortable estimating them, and most "mysterious" limits stop being mysterious.
