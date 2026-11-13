@@ -11,7 +11,7 @@ tags:
 - latency
 - memory
 - serving
-tldr: 'KV cache is the default choice for multi-token autoregressive serving because causal attention makes past keys and values reusable. The catch is capacity: every generated token grows the resident memory footprint, so admission control has to count prompt plus output allowance, not just prompt length. This revised post separates prefill from decode, uses numerically explicit equivalence tests, and calls out the operational failure modes that show up under load.'
+tldr: 'KV cache is the default choice for multi-token autoregressive serving because causal attention makes past keys and values reusable. The catch is capacity: every generated token grows the resident memory footprint, so admission control has to count prompt plus output allowance, not just prompt length.'
 takeaways:
 - Cache the prompt once, then measure decode separately; don’t mix prefill with per-token latency.
 - Budget resident tokens and cache lifetime, not request count.
@@ -78,7 +78,7 @@ sum_{i=0}^{M-1}(N+i)
 = 419,900
 ```
 
-That is about `191x` fewer token-position evaluations. It is not a latency prediction. It is the right shape of the arithmetic.
+That is about `191x` fewer token-position evaluations. Wall-clock speedup is smaller, because prefill runs in parallel while decode is sequential and memory-bound.
 
 ## Complexity counts, not timings
 
@@ -204,7 +204,7 @@ Paged and block-based caches solve fragmentation and scheduling, not attention m
 
 That is why block-based systems such as [vLLM’s PagedAttention paper](https://arxiv.org/abs/2309.06180) matter. The win is physical allocation efficiency and better serving behavior under variable-length traffic. The attention algorithm is still causal attention over the same cached history.
 
-For implementation details, use primary sources adjacent to the claim, not generic landing pages:
+Primary sources worth reading:
 
 - [Hugging Face Transformers cache and `past_key_values` documentation](https://huggingface.co/docs/transformers/main/en/main_classes/text_generation)
 - [Hugging Face cache implementation and mask requirements](https://huggingface.co/docs/transformers/main/en/cache_explanation)
@@ -225,21 +225,13 @@ This is a correctness smoke test first, and a performance experiment second. The
 
 It compares one cached prefill plus incremental decode with the same model run without cache. It prints versions, uses a configurable prompt and output length, warms up both paths outside measured trials, synchronizes before timed GPU regions, and alternates measurement order.
 
-### Install and tested combinations
-
-Use an actual pinned combination, not a blanket claim.
+### Install
 
 ```bash
-pip install "torch==2.5.1" "transformers==4.48.3" "accelerate>=1.1.0"
+pip install torch transformers accelerate
 ```
 
-Tested combinations in the example environment:
-
-- `sshleifer/tiny-gpt2` on CPU
-- `gpt2` on CUDA
-- `microsoft/Phi-3-mini-4k-instruct` on CUDA with cache enabled in the standard Hugging Face generation path
-
-Those are compatibility checks for the example, not a promise that every `AutoModelForCausalLM` model will behave the same way. Some models need special attention implementations, cache settings, or prompt formatting.
+The script uses the standard Hugging Face `past_key_values` path. Some architectures need a specific attention implementation, cache class or prompt format, so check the model card before pointing it at a new model.
 
 ### Script
 
