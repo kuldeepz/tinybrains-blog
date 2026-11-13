@@ -141,6 +141,56 @@ def finalize(pr: int, merged: bool) -> None:
                 + ("\n🧹 Private uploads deleted from Drive." if purged else ""))
 
 
+async def check_models() -> int:
+    """Ping every configured model with a tiny prompt (a fraction of a cent on Azure). Names stay out of the report."""
+    from .llm import AZURE_TIERS, LLM, azure_deployment, load_role
+    import yaml
+    from .settings import MODELS_FILE
+
+    llm = LLM()
+    lines, ok = [], True
+    msgs = [{"role": "user", "content": "Reply with exactly: OK"}]
+    tiers = {"mini (writer)": "mini", "architect (Senior brief + review)": "architect"}
+    for label, tier in tiers.items():
+        own = env(AZURE_TIERS[tier][0])
+        if not llm._az or not azure_deployment(tier):
+            lines.append(f"⚪ Azure {label}: not configured"); ok = ok and tier != "mini"; continue
+        kw = dict(model=azure_deployment(tier), messages=msgs, max_completion_tokens=4000, reasoning_effort="low")
+        try:
+            try:
+                r = await llm._az.chat.completions.create(**kw)
+            except Exception as e:
+                if "reasoning_effort" not in str(e):
+                    raise
+                kw.pop("reasoning_effort"); r = await llm._az.chat.completions.create(**kw)
+            reply = (r.choices[0].message.content or "").strip()[:20]
+            note = "" if own else " (using the mini deployment)"
+            lines.append(f"✅ Azure {label}: replied '{esc(reply)}'{note}")
+        except Exception as e:
+            ok = False
+            lines.append(f"❌ Azure {label}: {esc(type(e).__name__)}: {esc(str(e)[:200])}")
+    free = []
+    for rc in yaml.safe_load(MODELS_FILE.read_text())["roles"]:
+        for m in load_role(rc).free:
+            if m not in free:
+                free.append(m)
+    for m in free:
+        if not llm._or:
+            lines.append("⚪ OpenRouter: not configured"); break
+        try:
+            r = await llm._or.chat.completions.create(model=m, messages=msgs, max_tokens=200)
+            lines.append(f"✅ {esc(m)}: '{esc((r.choices[0].message.content or '').strip()[:20])}'")
+        except Exception as e:
+            lines.append(f"⚠️ {esc(m)}: {esc(str(e)[:120])}")
+    report = "🔌 <b>Model check</b>\n" + "\n".join(lines)
+    print(report)
+    try:
+        Telegram().send(report)
+    except Exception:
+        pass
+    return 0 if ok else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=env("TB_LOG", "INFO"), format="%(asctime)s %(name)s %(levelname)s %(message)s")
     for noisy in ("httpx", "googleapiclient", "openai"):
@@ -149,6 +199,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     a = sub.add_parser("idea"); a.add_argument("title"); a.add_argument("--notes", default="")
     sub.add_parser("status")
+    sub.add_parser("check")
     w = sub.add_parser("write"); w.add_argument("items", nargs="+"); w.add_argument("--no-pr", action="store_true")
     w.add_argument("--no-build", action="store_true")
     e = sub.add_parser("event"); e.add_argument("payload")
@@ -161,6 +212,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"stored {topic['id']}: {topic['title']}" + "".join(f"\n  similar: {d}" for d in dups))
     elif args.cmd == "status":
         print(Tracker().summary())
+    elif args.cmd == "check":
+        return asyncio.run(check_models())
     elif args.cmd == "write":
         ids = [i.upper() for i in args.items if ID_RE.match(i)]
         titles = [i for i in args.items if not ID_RE.match(i)]
