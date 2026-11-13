@@ -1,0 +1,328 @@
+---
+import '../styles/global.css';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import SubscribeForm from '../components/SubscribeForm.astro';
+import { SITE } from '../config';
+import { url, absUrl } from '../lib/url';
+import { getPosts, allTopics, isoDate } from '../lib/posts';
+
+interface Props {
+  title?: string;
+  description?: string;
+  image?: string; // path relative to public
+  type?: 'website' | 'article';
+  current?: string;
+  progress?: boolean;
+  publishedTime?: Date;
+  noindex?: boolean;
+}
+const { title, description = SITE.description, image, type = 'website', current, progress = false, publishedTime, noindex = false } = Astro.props;
+const fullTitle = title ? `${title} · ${SITE.name}` : `${SITE.name} — ${SITE.tagline}`;
+const canonical = new URL(Astro.url.pathname, Astro.site).href;
+const ogImage = image ? absUrl(image, Astro.site) : undefined;
+
+const posts = await getPosts();
+const index = posts.map((p) => ({
+  title: p.data.title,
+  url: p.href,
+  topic: p.data.topic,
+  level: p.data.level,
+  type: p.data.type,
+  desc: p.data.description,
+  tags: p.data.tags,
+  date: isoDate(p.data.date),
+  meta: p.meta,
+}));
+const topics = allTopics(posts);
+const [brandMain] = SITE.name.split('.');
+---
+<!doctype html>
+<html lang={SITE.lang} data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{fullTitle}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" type="image/svg+xml" href={url('favicon.svg')} />
+    <link rel="alternate" type="application/rss+xml" title={SITE.name} href={url('rss.xml')} />
+    <link rel="sitemap" href={url('sitemap-index.xml')} />
+    <meta name="theme-color" content="#08090C" />
+    {noindex && <meta name="robots" content="noindex" />}
+    <meta property="og:site_name" content={SITE.name} />
+    <meta property="og:title" content={title || SITE.name} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content={type} />
+    <meta property="og:url" content={canonical} />
+    {ogImage && <meta property="og:image" content={ogImage} />}
+    {publishedTime && <meta property="article:published_time" content={publishedTime.toISOString()} />}
+    <meta name="twitter:card" content={ogImage ? 'summary_large_image' : 'summary'} />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+    <script is:inline>
+      (function () {
+        var d = document.documentElement;
+        d.classList.add('js');
+        try {
+          var t = localStorage.getItem('tb-theme');
+          if (!t) t = window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+          d.setAttribute('data-theme', t);
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <div class="dots-bg" aria-hidden="true"></div>
+    <Header current={current} progress={progress} />
+    <main id="main">
+      <slot />
+    </main>
+    <Footer />
+
+    <!-- mobile menu -->
+    <div class="overlay menu" id="mobile-menu" hidden role="dialog" aria-modal="true" aria-label="Menu">
+      <div class="top">
+        <span class="brand"><span class="mark" aria-hidden="true"></span>{brandMain}</span>
+        <button class="icon-btn" type="button" data-close aria-label="Close menu" style="width:38px;height:38px">✕</button>
+      </div>
+      <a class="big" href={url()}>Home</a>
+      <a class="big" href={url('archive/')}>Articles</a>
+      <a class="big" href={url('archive/?type=Tutorial')}>Tutorials</a>
+      <a class="big" href={url('topics/')}>Topics</a>
+      <a class="big" href={url('about/')}>About</a>
+      <span class="spacer"></span>
+      <button class="btn btn-primary" type="button" data-open-news>Subscribe</button>
+    </div>
+
+    <!-- command palette -->
+    <div class="overlay scrim" id="cmd" hidden data-scrim>
+      <div class="palette" role="dialog" aria-modal="true" aria-label="Search">
+        <div class="in">
+          <span class="muted" aria-hidden="true">⌕</span>
+          <input id="cmd-q" type="text" autocomplete="off" spellcheck="false" placeholder="Search articles, jump to topics, run actions…" aria-label="Search" aria-controls="cmd-list" />
+          <span class="kbd">ESC</span>
+        </div>
+        <div class="list" id="cmd-list" role="listbox" aria-label="Results"></div>
+        <div class="foot"><span>↑↓ move</span><span>↵ open</span><span>esc close</span><span class="grow"></span><span>⌘K toggle</span></div>
+      </div>
+    </div>
+
+    <!-- newsletter modal -->
+    <div class="overlay scrim modal-scrim" id="news" hidden data-scrim>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="news-h">
+        <button class="icon-btn x" type="button" data-close aria-label="Close">✕</button>
+        <div class="eyebrow">// Newsletter</div>
+        <h2 id="news-h">One deep-dive. Every Friday.</h2>
+        <p>The week's most useful technique, explained with code. No spam, one-click unsubscribe.</p>
+        <SubscribeForm chrome={false} idSuffix="modal" />
+      </div>
+    </div>
+
+    <script type="application/json" id="post-index" set:html={JSON.stringify(index).replace(/</g, '\\u003c')} />
+    <script type="application/json" id="topic-index" set:html={JSON.stringify({ topics, archive: url('archive/'), home: url() }).replace(/</g, '\\u003c')} />
+    <script>
+      import { search, localIndex, preload } from '../lib/search';
+
+      const root = document.documentElement;
+      const $ = <T extends Element = HTMLElement>(s: string, el: ParentNode = document) => el.querySelector(s) as T | null;
+      const $$ = <T extends Element = HTMLElement>(s: string, el: ParentNode = document) => Array.from(el.querySelectorAll(s)) as T[];
+
+      /* ---------- theme ---------- */
+      function setTheme(t: string) {
+        root.setAttribute('data-theme', t);
+        try { localStorage.setItem('tb-theme', t); } catch {}
+      }
+      function toggleTheme() { setTheme(root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'); }
+      $$('[data-theme-toggle]').forEach((b) => b.addEventListener('click', toggleTheme));
+
+      /* ---------- overlays ---------- */
+      let lastFocus: HTMLElement | null = null;
+      function open(id: string) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        $$('.overlay').forEach((o) => { if (o !== el) o.hidden = true; });
+        lastFocus = document.activeElement as HTMLElement;
+        el.hidden = false;
+        document.body.style.overflow = 'hidden';
+        if (id === 'mobile-menu') $('[data-open-menu]')?.setAttribute('aria-expanded', 'true');
+        const f = id === 'cmd' ? $('#cmd-q') : (el.querySelector('input, button, a') as HTMLElement | null);
+        requestAnimationFrame(() => f?.focus());
+      }
+      function closeAll() {
+        let any = false;
+        $$('.overlay').forEach((o) => { if (!o.hidden) { o.hidden = true; any = true; } });
+        document.body.style.overflow = '';
+        $('[data-open-menu]')?.setAttribute('aria-expanded', 'false');
+        if (any) lastFocus?.focus?.();
+      }
+      document.addEventListener('click', (e) => {
+        const t = e.target as HTMLElement;
+        if (t.closest('[data-open-cmd]')) { e.preventDefault(); openCmd(); }
+        else if (t.closest('[data-open-news]')) { e.preventDefault(); open('news'); }
+        else if (t.closest('[data-open-menu]')) { e.preventDefault(); open('mobile-menu'); }
+        else if (t.closest('[data-close]')) { e.preventDefault(); closeAll(); }
+        else if (t.matches('[data-scrim]')) closeAll();
+      });
+      document.addEventListener('keydown', (e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+          e.preventDefault();
+          const c = document.getElementById('cmd')!;
+          c.hidden ? openCmd() : closeAll();
+        } else if (e.key === 'Escape') closeAll();
+        else if (e.key === '/' && !(e.target as HTMLElement).closest('input, textarea, [contenteditable]')) {
+          e.preventDefault(); openCmd();
+        }
+      });
+
+      /* ---------- command palette ---------- */
+      type Item = { k: string; label: string; sub?: string; meta?: string; run: () => void };
+      const cmdQ = $<HTMLInputElement>('#cmd-q')!;
+      const list = $('#cmd-list')!;
+      const tIndex = JSON.parse($('#topic-index')!.textContent || '{}') as { topics: string[]; archive: string; home: string };
+      let items: Item[] = [];
+      let sel = 0;
+      let seq = 0;
+      const go = (href: string) => () => { location.href = href; };
+
+      function actions(q: string): Item[] {
+        const dark = root.getAttribute('data-theme') === 'dark';
+        const a: Item[] = [
+          { k: 'ACTION', label: 'Toggle theme', meta: dark ? '→ light' : '→ dark', run: () => { toggleTheme(); closeAll(); } },
+          { k: 'ACTION', label: 'Subscribe to newsletter', run: () => open('news') },
+          { k: 'ACTION', label: 'Ask the blog', meta: 'home', run: () => { location.href = tIndex.home + (q ? `?ask=${encodeURIComponent(q)}` : '') + '#ask'; } },
+          { k: 'ACTION', label: 'Browse all articles', meta: 'archive', run: go(tIndex.archive) },
+        ];
+        return a.filter((x) => !q || x.label.toLowerCase().includes(q.toLowerCase()));
+      }
+      function topicItems(q: string): Item[] {
+        return tIndex.topics
+          .filter((t) => !q || t.toLowerCase().includes(q.toLowerCase()))
+          .slice(0, 4)
+          .map((t) => ({ k: 'TOPIC', label: t, meta: 'filter →', run: go(`${tIndex.archive}?topic=${encodeURIComponent(t)}`) }));
+      }
+      function render() {
+        list.innerHTML = '';
+        if (!items.length) {
+          const d = document.createElement('div');
+          d.className = 'empty';
+          d.textContent = 'no results — press ↵ to ask the blog';
+          list.appendChild(d);
+          return;
+        }
+        items.forEach((it, i) => {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'item' + (i === sel ? ' sel' : '');
+          b.setAttribute('role', 'option');
+          b.setAttribute('aria-selected', String(i === sel));
+          b.innerHTML = `<span class="k"></span><span class="l"></span><span class="m"></span>`;
+          (b.children[0] as HTMLElement).textContent = it.k;
+          const l = b.children[1] as HTMLElement;
+          l.textContent = it.label;
+          if (it.sub) { const s = document.createElement('small'); s.innerHTML = it.sub; l.appendChild(s); }
+          (b.children[2] as HTMLElement).textContent = it.meta || '';
+          b.addEventListener('click', () => it.run());
+          b.addEventListener('mousemove', () => { if (sel !== i) { sel = i; mark(); } });
+          list.appendChild(b);
+        });
+      }
+      function mark() {
+        $$('.item', list).forEach((b, i) => { b.classList.toggle('sel', i === sel); b.setAttribute('aria-selected', String(i === sel)); });
+        $$('.item', list)[sel]?.scrollIntoView({ block: 'nearest' });
+      }
+      async function update() {
+        const q = cmdQ.value.trim();
+        const my = ++seq;
+        let arts: Item[];
+        if (!q) {
+          arts = localIndex().slice(0, 5).map((p) => ({ k: 'ARTICLE', label: p.title, meta: p.topic, run: go(p.url) }));
+        } else {
+          const { hits } = await search(q, 6);
+          if (my !== seq) return;
+          arts = hits.map((h) => ({ k: 'ARTICLE', label: h.title, sub: h.excerpt, meta: h.topic, run: go(h.url) }));
+        }
+        items = [...arts, ...topicItems(q), ...actions(q)];
+        sel = 0;
+        render();
+      }
+      function openCmd() {
+        cmdQ.value = '';
+        open('cmd');
+        preload();
+        update();
+      }
+      let deb: number | undefined;
+      cmdQ.addEventListener('input', () => { clearTimeout(deb); deb = window.setTimeout(update, 120); });
+      cmdQ.addEventListener('focus', preload, { once: true });
+      cmdQ.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowDown') { e.preventDefault(); if (items.length) { sel = (sel + 1) % items.length; mark(); } }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); if (items.length) { sel = (sel - 1 + items.length) % items.length; mark(); } }
+        else if (e.key === 'Enter') {
+          e.preventDefault();
+          if (items[sel]) items[sel].run();
+          else location.href = tIndex.home + `?ask=${encodeURIComponent(cmdQ.value.trim())}#ask`;
+        }
+      });
+
+      /* ---------- newsletter forms ---------- */
+      $$<HTMLFormElement>('form.sub-form').forEach((form) => {
+        form.addEventListener('submit', (e) => {
+          const msg = form.parentElement!.querySelector('.sub-msg') as HTMLElement;
+          const input = form.querySelector('input') as HTMLInputElement;
+          if (!input.checkValidity()) return;
+          if (!form.dataset.action) {
+            e.preventDefault();
+            msg.hidden = false;
+            msg.className = 'sub-msg info';
+            msg.textContent = '› newsletter is coming soon — thanks for the interest. Follow the RSS feed in the meantime.';
+            return;
+          }
+          msg.hidden = false;
+          msg.className = 'sub-msg ok';
+          msg.textContent = '✓ subscribed. check your inbox to confirm.';
+          setTimeout(() => form.reset(), 50);
+        });
+      });
+
+      /* ---------- code copy buttons ---------- */
+      document.addEventListener('click', async (e) => {
+        const btn = (e.target as HTMLElement).closest('.copy') as HTMLButtonElement | null;
+        if (!btn) return;
+        const pre = btn.closest('.cb')?.querySelector('pre');
+        if (!pre) return;
+        const text = Array.from(pre.querySelectorAll('.line')).map((l) => l.textContent).join('\n') || pre.textContent || '';
+        try { await navigator.clipboard.writeText(text); btn.textContent = '✓ Copied'; } catch { btn.textContent = 'Press ⌘C'; }
+        setTimeout(() => (btn.textContent = 'Copy'), 1600);
+      });
+
+      /* ---------- reading progress (posts) ---------- */
+      const bar = document.getElementById('read-progress');
+      if (bar) {
+        const art = document.querySelector('article') as HTMLElement | null;
+        const pct = document.querySelector('[data-read-pct]');
+        const onScroll = () => {
+          const el = art || document.documentElement;
+          const top = el.getBoundingClientRect().top + scrollY;
+          const total = el.offsetHeight - innerHeight * 0.6;
+          const p = Math.max(0, Math.min(100, ((scrollY - top + 120) / Math.max(1, total)) * 100));
+          bar.style.width = p + '%';
+          if (pct) pct.textContent = Math.round(p) + '% read';
+        };
+        addEventListener('scroll', onScroll, { passive: true });
+        onScroll();
+      }
+
+    </script>
+    <script is:inline>
+      // relative dates are rendered at build time; refresh them in the browser so they never go stale
+      document.querySelectorAll('time[data-rel]').forEach(function (el) {
+        var d = new Date(el.getAttribute('datetime')), days = Math.floor((Date.now() - d.getTime()) / 864e5);
+        el.textContent = days <= 0 ? 'today' : days === 1 ? 'yesterday' : days < 30 ? days + ' days ago'
+          : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+      });
+    </script>
+  </body>
+</html>

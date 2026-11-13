@@ -1,0 +1,33 @@
+name: Finalize post
+# When a post/* PR is merged (approved) or closed (rejected): update tracker, delete private Drive files, notify Telegram.
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  finalize:
+    if: startsWith(github.event.pull_request.head.ref, 'post/')
+    runs-on: ubuntu-latest
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+      GDRIVE_SA_JSON: ${{ secrets.GDRIVE_SA_JSON }}
+      GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+      GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+      GDRIVE_REFRESH_TOKEN: ${{ secrets.GDRIVE_REFRESH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main, fetch-depth: 0 }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip, cache-dependency-path: agents/requirements.txt }
+      - run: |
+          pip install -q -r agents/requirements.txt
+          git config user.name "tinybrains-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          python -m agents finalize --pr ${{ github.event.pull_request.number }} --merged ${{ github.event.pull_request.merged }}
+      - name: Delete post branch
+        if: always()
+        run: git push origin --delete "${{ github.event.pull_request.head.ref }}" || true

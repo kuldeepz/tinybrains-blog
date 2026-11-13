@@ -1,0 +1,26 @@
+---
+import Base from '../layouts/Base.astro';
+import { getPosts, allTopics, topicCounts, archiveHref } from '../lib/posts';
+
+const posts = await getPosts();
+const counts = topicCounts(posts);
+const topics = allTopics(posts).sort((a, b) => (counts[b] || 0) - (counts[a] || 0));
+---
+<Base title="Topics" description="Browse articles by topic." current="topics">
+  <section class="wrap sec">
+    <div class="eyebrow">// Topics · {topics.length} clusters · {posts.length} articles</div>
+    <h1 class="page-h1">Browse by topic.</h1>
+    <div class="tgrid">
+      {topics.map((t) => {
+        const ps = posts.filter((p) => p.data.topic === t);
+        return (
+          <a href={archiveHref({ topic: t })} class="card lift tcard">
+            <div class="row"><h2><i aria-hidden="true"></i>{t}</h2><span class="cnt">{ps.length} article{ps.length === 1 ? '' : 's'}</span></div>
+            {ps.length ? <ul>{ps.slice(0, 3).map((p) => <li>{p.data.title}</li>)}</ul> : <ul><li>Nothing here yet — soon.</li></ul>}
+            <span class="go">open in archive →</span>
+          </a>
+        );
+      })}
+    </div>
+  </section>
+</Base>

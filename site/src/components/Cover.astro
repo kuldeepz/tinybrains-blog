@@ -1,0 +1,10 @@
+---
+import type { PostView } from '../lib/posts';
+interface Props { post: PostView; class?: string; badge?: string; fig?: boolean; eager?: boolean }
+const { post, class: cls = '', badge, fig = true, eager = false } = Astro.props;
+---
+<div class={`cov ${cls}`} style={`background:${post.coverBg}`}>
+  {post.coverSrc && <img src={post.coverSrc} alt="" loading={eager ? 'eager' : 'lazy'} decoding="async" />}
+  {badge && <span class="badge">{badge}</span>}
+  {fig && <span class="fig">{post.fig}</span>}
+</div>

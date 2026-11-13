@@ -1,0 +1,81 @@
+name: Agents
+# Privacy: the Telegram payload is read from $GITHUB_EVENT_PATH by Python and never echoed or put in `env:`
+# (step env blocks are printed in public logs). Private material goes to Google Drive only.
+on:
+  repository_dispatch:
+    types: [telegram]
+  workflow_dispatch:
+    inputs:
+      command:
+        description: "agents.cli command"
+        type: choice
+        options: [write, idea, status, purge]
+        default: status
+      args:
+        description: "arguments, e.g. T001 T002  or  a topic title"
+        required: false
+  schedule:
+    - cron: "17 3 * * 1" # weekly: purge old conversation logs from Drive
+permissions:
+  contents: write
+  pull-requests: write
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+      AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
+      AZURE_OPENAI_DEPLOYMENT: ${{ vars.AZURE_OPENAI_DEPLOYMENT }}
+      AZURE_OPENAI_DEPLOYMENT_SMALL: ${{ vars.AZURE_OPENAI_DEPLOYMENT_SMALL }}
+      AZURE_OPENAI_API_VERSION: ${{ vars.AZURE_OPENAI_API_VERSION }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+      GDRIVE_SA_JSON: ${{ secrets.GDRIVE_SA_JSON }}
+      GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+      GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+      GDRIVE_REFRESH_TOKEN: ${{ secrets.GDRIVE_REFRESH_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
+      TB_MAX_PARALLEL: ${{ vars.TB_MAX_PARALLEL || '4' }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip, cache-dependency-path: agents/requirements.txt }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: site/package-lock.json }
+      - name: Install
+        run: |
+          pip install -q -r agents/requirements.txt
+          (cd site && npm ci --silent)
+          git config user.name "tinybrains-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Telegram event
+        if: github.event_name == 'repository_dispatch'
+        run: |
+          python - <<'PY'
+          import json, os
+          ev = json.load(open(os.environ["GITHUB_EVENT_PATH"]))
+          json.dump(ev.get("client_payload", {}), open(os.environ["RUNNER_TEMP"] + "/payload.json", "w"))
+          PY
+          python -m agents event "$RUNNER_TEMP/payload.json"
+      - name: Manual command
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          CMD: ${{ inputs.command }}
+          ARGS: ${{ inputs.args }}
+        run: |
+          case "$CMD" in
+            idea) python -m agents idea "$ARGS" ;;
+            write) if echo "$ARGS" | grep -Eiq '^[[:space:]]*(T[0-9]+[[:space:],]*)+$'; then
+                     python -m agents write $(echo "$ARGS" | tr ',' ' ')   # one or more topic ids
+                   else
+                     python -m agents write "$ARGS"                         # a single new topic title
+                   fi ;;
+            *) python -m agents "$CMD" ;;
+          esac
+      - name: Weekly purge
+        if: github.event_name == 'schedule'
+        run: python -m agents purge

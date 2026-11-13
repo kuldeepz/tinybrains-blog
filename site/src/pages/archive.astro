@@ -1,0 +1,165 @@
+---
+import Base from '../layouts/Base.astro';
+import PostCard from '../components/PostCard.astro';
+import { SITE } from '../config';
+import { getPosts, allTopics } from '../lib/posts';
+
+const posts = await getPosts();
+const topics = allTopics(posts);
+const PAGE = 6;
+const attrs = (p: (typeof posts)[number]) => ({
+  'data-topic': p.data.topic,
+  'data-level': p.data.level,
+  'data-type': p.data.type,
+  'data-text': [p.data.title, p.data.description, p.data.topic, p.data.tags.join(' ')].join(' ').toLowerCase(),
+});
+---
+<Base title="Archive" description={`Every ${SITE.name} article — filter by topic, level and type.`} current="articles">
+  <section class="wrap sec" id="archive" data-view="grid" data-page={PAGE}>
+    <div class="eyebrow">// Archive · <span id="arch-count">{Math.min(PAGE, posts.length)} of {posts.length} shown · {posts.length} total</span></div>
+    <h1 class="page-h1">Every article, searchable.</h1>
+    <div class="gb" style="max-width:720px">
+      <div class="gb-inner" style="padding:6px 8px 6px 16px">
+        <span class="caret" aria-hidden="true">›</span>
+        <input id="arch-q" type="search" autocomplete="off" placeholder="Filter by title, topic or tag…" aria-label="Filter the archive" />
+        <span class="kbd hm">live filter</span>
+      </div>
+    </div>
+
+    <div class="filters">
+      <div class="frow" role="group" aria-label="Topic">
+        <span class="label">Topic</span>
+        {['All', ...topics].map((t) => <button type="button" class="chip" data-f="topic" data-v={t} aria-pressed={t === 'All' ? 'true' : 'false'}>{t}</button>)}
+      </div>
+      <div class="frow" role="group" aria-label="Level">
+        <span class="label">Level</span>
+        {['All', ...SITE.levels].map((t) => <button type="button" class="chip" data-f="level" data-v={t} aria-pressed={t === 'All' ? 'true' : 'false'}>{t}</button>)}
+      </div>
+      <div class="frow">
+        <span class="label">Type</span>
+        <span role="group" aria-label="Type" style="display:contents">
+          {['All', ...SITE.types].map((t) => <button type="button" class="chip" data-f="type" data-v={t} aria-pressed={t === 'All' ? 'true' : 'false'}>{t}</button>)}
+        </span>
+        <span class="grow"></span>
+        <div class="seg" role="group" aria-label="Sort">
+          <button type="button" data-sort="latest" aria-pressed="true">Latest</button>
+          <button type="button" data-sort="popular" aria-pressed="false" title="Popularity data isn't tracked yet — falls back to latest">Popular</button>
+        </div>
+        <div class="seg" role="group" aria-label="View">
+          <button type="button" data-view-btn="grid" aria-pressed="true">Grid</button>
+          <button type="button" data-view-btn="list" aria-pressed="false">List</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="g3 agrid">
+      {posts.map((p) => <div class="ai" {...attrs(p)} style="display:flex;flex-direction:column"><PostCard post={p} showLevel /></div>)}
+    </div>
+
+    <div class="alist">
+      <div class="lrow hd"><span>DATE</span><span>TITLE</span><span class="tcol">TOPIC</span><span style="text-align:right">READ</span></div>
+      {posts.map((p) => (
+        <a href={p.href} class="lrow ai" {...attrs(p)}>
+          <span class="d">{p.shortDate}</span><span class="t">{p.data.title}</span><span class="tc tcol">{p.data.topic}</span><span class="r">{p.meta}</span>
+        </a>
+      ))}
+    </div>
+
+    <div class="empty-box" id="arch-empty" hidden>0 matches for these filters. <button type="button" id="arch-reset">reset filters</button></div>
+    <div class="more">
+      <span id="arch-showing"></span>
+      <button class="btn" type="button" id="arch-more">Load more ↓</button>
+    </div>
+  </section>
+</Base>
+
+<script>
+  const root = document.getElementById('archive')!;
+  const PAGE = Number(root.dataset.page) || 6;
+  const q = document.getElementById('arch-q') as HTMLInputElement;
+  const countEl = document.getElementById('arch-count')!;
+  const showingEl = document.getElementById('arch-showing')!;
+  const moreBtn = document.getElementById('arch-more') as HTMLButtonElement;
+  const empty = document.getElementById('arch-empty')!;
+  const grid = root.querySelector('.agrid') as HTMLElement;
+  const list = root.querySelector('.alist') as HTMLElement;
+  const gridItems = Array.from(grid.querySelectorAll<HTMLElement>('.ai'));
+  const listItems = Array.from(list.querySelectorAll<HTMLElement>('.ai'));
+  const total = gridItems.length;
+
+  const state: Record<string, string> = { topic: 'All', level: 'All', type: 'All' };
+  let shown = PAGE;
+  let view = 'grid';
+
+  const params = new URLSearchParams(location.search);
+  for (const k of ['topic', 'level', 'type']) {
+    const v = params.get(k);
+    if (v) {
+      const btn = root.querySelector<HTMLElement>(`[data-f="${k}"][data-v="${CSS.escape(v)}"]`) ||
+        Array.from(root.querySelectorAll<HTMLElement>(`[data-f="${k}"]`)).find((b) => b.dataset.v!.toLowerCase() === v.toLowerCase());
+      if (btn) state[k] = btn.dataset.v!;
+    }
+  }
+  if (params.get('q')) q.value = params.get('q')!;
+  if (params.get('view') === 'list') view = 'list';
+
+  function syncUrl() {
+    const p = new URLSearchParams();
+    for (const k of ['topic', 'level', 'type']) if (state[k] !== 'All') p.set(k, state[k]);
+    if (q.value.trim()) p.set('q', q.value.trim());
+    if (view === 'list') p.set('view', 'list');
+    const s = p.toString();
+    history.replaceState(null, '', location.pathname + (s ? `?${s}` : ''));
+  }
+
+  function apply() {
+    const text = q.value.trim().toLowerCase();
+    const terms = text.split(/\s+/).filter(Boolean);
+    const match = (el: HTMLElement) =>
+      (state.topic === 'All' || el.dataset.topic === state.topic) &&
+      (state.level === 'All' || el.dataset.level === state.level) &&
+      (state.type === 'All' || el.dataset.type === state.type) &&
+      terms.every((t) => el.dataset.text!.includes(t));
+    let n = 0;
+    gridItems.forEach((el, i) => {
+      const ok = match(el);
+      if (ok) n++;
+      const vis = ok && n <= shown;
+      el.classList.toggle('is-hidden', !vis);
+      listItems[i].classList.toggle('is-hidden', !vis);
+    });
+    const vis = Math.min(n, shown);
+    countEl.textContent = `${vis} of ${n} shown · ${total} total`;
+    showingEl.textContent = n ? `showing ${vis} of ${n}` : '';
+    moreBtn.hidden = n <= shown;
+    empty.hidden = n > 0;
+    grid.hidden = n === 0;
+    list.hidden = n === 0;
+    root.querySelectorAll<HTMLElement>('[data-f]').forEach((b) => b.setAttribute('aria-pressed', String(state[b.dataset.f!] === b.dataset.v)));
+    root.dataset.view = view;
+    root.querySelectorAll<HTMLElement>('[data-view-btn]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.viewBtn === view)));
+    syncUrl();
+  }
+
+  root.addEventListener('click', (e) => {
+    const t = e.target as HTMLElement;
+    const f = t.closest<HTMLElement>('[data-f]');
+    if (f) { state[f.dataset.f!] = f.dataset.v!; shown = PAGE; apply(); return; }
+    const v = t.closest<HTMLElement>('[data-view-btn]');
+    if (v) { view = v.dataset.viewBtn!; apply(); return; }
+    const s = t.closest<HTMLElement>('[data-sort]');
+    if (s) {
+      // Popularity isn't tracked on a static site — "Popular" falls back to newest first.
+      root.querySelectorAll<HTMLElement>('[data-sort]').forEach((b) => b.setAttribute('aria-pressed', String(b === s)));
+    }
+  });
+  q.addEventListener('input', () => { shown = PAGE; apply(); });
+  moreBtn.addEventListener('click', () => { shown += PAGE; apply(); });
+  document.getElementById('arch-reset')!.addEventListener('click', () => {
+    state.topic = state.level = state.type = 'All';
+    q.value = '';
+    shown = PAGE;
+    apply();
+  });
+  apply();
+</script>

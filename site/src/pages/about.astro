@@ -1,0 +1,51 @@
+---
+import Base from '../layouts/Base.astro';
+import { SITE } from '../config';
+import { getPosts, allTopics, fmtK } from '../lib/posts';
+
+const posts = await getPosts();
+const usedTopics = allTopics(posts).filter((t) => posts.some((p) => p.data.topic === t));
+const tokens = posts.reduce((s, p) => s + p.tokens, 0);
+const words = SITE.mission.split(' ');
+const stats = [
+  { v: String(posts.length), l: 'Articles published' },
+  { v: String(usedTopics.length), l: 'Topics covered' },
+  { v: '~' + fmtK(tokens), l: 'Tokens written', grad: true },
+];
+---
+<Base title="About" description={SITE.mission} current="about">
+  <section class="wrap sec about">
+    <div class="eyebrow">// About</div>
+    <h1 id="mission" aria-label={SITE.mission}>{words.map((w) => <span class="w" aria-hidden="true">{w} </span>)}<span class="cursor" id="mission-cur" hidden aria-hidden="true" style="width:.45em;height:.9em"></span></h1>
+
+    <div class="card who">
+      <div class="photo" aria-hidden="true"><span class="ini">{SITE.author.initials}</span><span>{SITE.author.name.toLowerCase().replace(/\s+/g, '.')}</span><span>1:1</span></div>
+      <div>
+        <div class="label">Author</div>
+        <h2>{SITE.author.name}</h2>
+        <div class="role">{SITE.author.role}</div>
+        <p>{SITE.author.bio}</p>
+        <div class="links">{SITE.socials.map((s) => <a href={s.href} rel={s.href.startsWith('http') ? 'me noopener' : undefined}>{s.label} ↗</a>)}</div>
+      </div>
+    </div>
+
+    <div class="stats">
+      {stats.map((s) => <div><div class:list={['v', { 'grad-text': s.grad }]}>{s.v}</div><div class="label">{s.l}</div></div>)}
+    </div>
+
+    <h2 style="font:600 26px var(--sans);letter-spacing:-.025em;margin:64px 0 8px">Stack</h2>
+    <p class="muted" style="margin:0 0 20px">What we use to write, run and measure everything on this site.</p>
+    <div class="stack">
+      {SITE.stack.map((g) => <div><span class="label">{g.group}</span><span class="items">{g.items.map((i) => <span>{i}</span>)}</span></div>)}
+    </div>
+  </section>
+</Base>
+<script>
+  const ws = Array.from(document.querySelectorAll('#mission .w'));
+  const cur = document.getElementById('mission-cur')!;
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) ws.forEach((w) => w.classList.add('on'));
+  else {
+    cur.hidden = false;
+    ws.forEach((w, i) => setTimeout(() => { w.classList.add('on'); if (i === ws.length - 1) setTimeout(() => (cur.hidden = true), 900); }, 120 + i * 55));
+  }
+</script>

@@ -1,0 +1,327 @@
+---
+import { Code } from 'astro:components';
+import Base from '../layouts/Base.astro';
+import PostCard from '../components/PostCard.astro';
+import Cover from '../components/Cover.astro';
+import SubscribeForm from '../components/SubscribeForm.astro';
+import { SITE } from '../config';
+import { url } from '../lib/url';
+import { getPosts, allTopics, topicCounts, firstCodeBlock, archiveHref, rnd, relDays } from '../lib/posts';
+import { tinybrainsTheme } from '../lib/shiki.mjs';
+
+const posts = await getPosts();
+const [featured, ...rest] = posts;
+const latest = rest.slice(0, 6);
+const trending = posts.slice(0, 5);
+const counts = topicCounts(posts);
+const topics = allTopics(posts);
+
+// ---- hero ----
+const heroWords = SITE.heroHeadline.split(' ');
+const CELL_TOK = ['how', 'do', 'i', 'cut', 'rag', 'latency', '?', 'cache', 'top-k', 'rerank', 'stream', 'tokens'];
+const r = rnd(42);
+const cells: { bg: string; o: string; d: string; dl: string }[] = [];
+for (let i = 0; i < 12; i++)
+  for (let j = 0; j < 12; j++) {
+    const v = Math.max(Math.exp(-Math.abs(i - j) / 1.6) * (j <= i ? 1 : 0.35), r() < 0.1 ? 0.55 : 0, 0.06);
+    const t = j / 11;
+    cells.push({
+      bg: `rgb(${Math.round(124 + (34 - 124) * t)},${Math.round(92 + (211 - 92) * t)},${Math.round(255 + (238 - 255) * t)})`,
+      o: v.toFixed(2),
+      d: (2 + r() * 3).toFixed(2) + 's',
+      dl: (-r() * 4).toFixed(2) + 's',
+    });
+  }
+
+// ---- ticker ----
+type Tick = { k: string; c: string; t: string; href?: string };
+const ticks: Tick[] = [];
+posts.slice(0, 6).forEach((p, i) => {
+  if (p.data.updated) ticks.push({ k: 'UPDATED', c: 'var(--green)', t: `${p.data.title} → v${p.data.version}`, href: p.href });
+  else if (p.data.type === 'Tutorial') ticks.push({ k: 'LAB', c: 'var(--cyan)', t: p.data.title, href: p.href });
+  else ticks.push({ k: i < 3 ? 'NEW' : 'READ', c: 'var(--link)', t: p.data.title, href: p.href });
+});
+SITE.tickerNotes.forEach((n) => ticks.push({ k: n.k, c: n.k === 'LAB' ? 'var(--cyan)' : 'var(--mut)', t: n.t }));
+
+// ---- topic map ----
+const POS: Record<string, [number, number]> = {
+  LLMs: [24, 34], Research: [13, 64], Tools: [37, 70], Agents: [53, 44], Evals: [68, 20], RAG: [76, 72], MLOps: [88, 44], Infra: [52, 86],
+};
+const nodes = topics.map((name, i) => {
+  const p = POS[name] ?? [15 + ((i * 37) % 70), 15 + ((i * 53) % 70)];
+  return { name, x: p[0], y: p[1], count: counts[name] || 0 };
+});
+const defaultTopic = [...nodes].sort((a, b) => b.count - a.count)[0]?.name ?? topics[0];
+const r2 = rnd(7);
+const dots: { x: string; y: string; s: string; t: string; alt: boolean }[] = [];
+nodes.forEach((n) => {
+  for (let k = 0; k < 9; k++) {
+    const a = r2() * Math.PI * 2, d = 4 + r2() * 9;
+    dots.push({ x: (n.x + Math.cos(a) * d).toFixed(1), y: (n.y + Math.sin(a) * d * 1.5).toFixed(1), s: (3 + r2() * 5).toFixed(1), t: n.name, alt: k % 2 === 1 });
+  }
+});
+
+// ---- lab ----
+const withCode = posts.map((p) => ({ p, code: firstCodeBlock(p.body) })).filter((x) => x.code);
+const lab = [...withCode.filter((x) => x.p.data.type === 'Tutorial'), ...withCode.filter((x) => x.p.data.type !== 'Tutorial')].slice(0, 3);
+const LANG: Record<string, string> = { py: 'Python', python: 'Python', ts: 'TypeScript', typescript: 'TypeScript', js: 'JavaScript', bash: 'Shell', sh: 'Shell', json: 'JSON', sql: 'SQL' };
+---
+<Base>
+  <!-- HERO -->
+  <section class="wrap hero">
+    <div class="hero2">
+      <div>
+        <div class="eyebrow">// {SITE.tagline}</div>
+        <h1 id="hero-h" aria-label={SITE.heroHeadline}>
+          {heroWords.map((w, i) => <span class:list={['w', { 'grad-text': i >= heroWords.length - 2 }]} aria-hidden="true">{w}</span>)}
+        </h1>
+        <p class="lede">{SITE.description}</p>
+        <form class="ask" id="ask" role="search">
+          <div class="gb">
+            <div class="gb-inner">
+              <span class="caret" aria-hidden="true">›</span>
+              <input id="ask-q" name="q" type="text" autocomplete="off" placeholder={SITE.askPrompts[0]} aria-label="Ask the blog" data-prompts={JSON.stringify(SITE.askPrompts)} />
+              <span class="hint hm">ask the blog</span>
+              <button class="send" type="submit" aria-label="Ask">↑</button>
+            </div>
+          </div>
+        </form>
+        <div class="answer" id="ask-answer" hidden aria-live="polite">
+          <div class="top"><span><b>◆ ANSWER</b> · “<span id="ask-echo"></span>”</span><button type="button" id="ask-clear">clear ✕</button></div>
+          <p><span id="ask-text"></span><span class="cursor" id="ask-cur" aria-hidden="true"></span></p>
+          <div class="hits" id="ask-hits" hidden></div>
+        </div>
+        <div class="try">
+          <span class="label">Try</span>
+          {SITE.askPrompts.slice(0, 3).map((t) => <button type="button" data-try={t}>{t.replace('…', '')}</button>)}
+        </div>
+      </div>
+      <div class="hv" aria-hidden="true">
+        <div class="cap"><span>attn · layer 18 · head 7</span><span><span class="dot"></span>live</span></div>
+        <div class="attn">
+          <div class="toks">{CELL_TOK.map((t) => <span>{t}</span>)}</div>
+          <div class="cells">{cells.map((c) => <span style={`background:${c.bg};--o:${c.o};--d:${c.d};--dl:${c.dl}`}></span>)}</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TICKER -->
+  <div class="ticker">
+    <div class="tick">
+      {[0, 1].map((copy) => ticks.map((t) => {
+        const inner = [<b style={`color:${t.c}`}>{t.k}</b>, <span>{t.t}</span>];
+        return t.href
+          ? <a href={t.href} aria-hidden={copy ? 'true' : undefined} tabindex={copy ? -1 : undefined}>{inner}</a>
+          : <span aria-hidden={copy ? 'true' : undefined}>{inner}</span>;
+      }))}
+    </div>
+  </div>
+
+  {featured && (
+    <section class="wrap sec">
+      <a href={featured.href} class="card lift feat">
+        <Cover post={featured} badge="FEATURED" eager />
+        <div class="txt">
+          <div class="meta-row">
+            <span class="tag">{featured.data.topic}</span>
+            <span class="tag plain">{featured.data.type} · v{featured.data.version}</span>
+            <span class="upd"><span class="dot"></span>{featured.data.updated ? 'Updated' : 'Published'} <time data-rel datetime={(featured.data.updated ?? featured.data.date).toISOString()}>{relDays(featured.data.updated ?? featured.data.date)}</time></span>
+          </div>
+          <h2>{featured.data.title}</h2>
+          <p>{featured.data.description}</p>
+          <div class="byline"><span class="avatar">{SITE.author.initials}</span><span class="n">{featured.data.author}</span><span class="m">· {featured.meta}</span></div>
+        </div>
+      </a>
+    </section>
+  )}
+
+  <section class="wrap sec split">
+    <div>
+      <div class="sec-head"><h2>Latest</h2><a href={url('archive/')}>all articles →</a></div>
+      {latest.length ? (
+        <div class="g3">{latest.map((p) => <PostCard post={p} />)}</div>
+      ) : (
+        <div class="empty-box">More articles are on the way. <a href={url('newsletter/')}>Get them by email →</a></div>
+      )}
+    </div>
+    <aside aria-label="Trending">
+      <div class="card trend">
+        <div class="label">Trending this week</div>
+        {trending.map((p, i) => (
+          <a href={p.href}><span class="n">{String(i + 1).padStart(2, '0')}</span><span><span class="t">{p.data.title}</span><span class="r">{p.data.topic} · {p.readMin} min</span></span></a>
+        ))}
+      </div>
+    </aside>
+  </section>
+
+  <!-- TOPIC MAP -->
+  <section class="wrap sec lg" id="topic-map" data-default={defaultTopic}>
+    <div class="eyebrow">// Embedding space · {nodes.length} clusters</div>
+    <h2 class="h-sec">Topic map</h2>
+    <div class="map2">
+      <div class="map" role="group" aria-label="Topic map — select a topic to open it in the archive">
+        <span class="ax" style="left:14px;bottom:10px">dim₁ →</span>
+        <span class="ax" style="left:14px;top:10px">↑ dim₂</span>
+        <span class="ax" style="right:14px;top:10px">umap · n={posts.length}</span>
+        {dots.map((d) => <span class:list={['pt', { alt: d.alt }]} data-t={d.t} style={`left:${d.x}%;top:${d.y}%;width:${d.s}px;height:${d.s}px`}></span>)}
+        {nodes.map((n) => (
+          <a class:list={['node', { empty: !n.count }]} data-topic={n.name} href={archiveHref({ topic: n.name })} style={`left:${n.x}%;top:${n.y}%`}>
+            <i></i>{n.name}<span class="n">{n.count}</span>
+          </a>
+        ))}
+      </div>
+      <div class="card near">
+        {nodes.map((n) => {
+          const hits = posts.filter((p) => p.data.topic === n.name).slice(0, 4);
+          return (
+            <div class="near-panel" data-panel={n.name} hidden={n.name !== defaultTopic} style="display:contents">
+              <div class="label">Nearest to <b>{n.name}</b> · {n.count} article{n.count === 1 ? '' : 's'}</div>
+              <div class="hits">
+                {hits.length ? hits.map((p) => <a href={p.href}><b>{p.data.title}</b><span>{p.data.level} · {p.meta}</span></a>) : <div class="none">nothing here yet — soon.</div>}
+              </div>
+              <a href={archiveHref({ topic: n.name })}>open in archive →</a>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+    <div class="chips">
+      {nodes.map((n) => <a class="chip" data-topic={n.name} href={archiveHref({ topic: n.name })}>{n.name}</a>)}
+    </div>
+  </section>
+
+  {lab.length > 0 && (
+    <section class="wrap sec lg">
+      <div class="eyebrow">// Code-first tutorials</div>
+      <h2 class="h-sec">From the lab</h2>
+      <div class="g3">
+        {lab.map(({ p, code }) => (
+          <a href={p.href} class="card lift lab">
+            <div class="code" aria-hidden="true"><Code code={code!.code.split('\n').slice(0, 9).join('\n')} lang={(code!.lang || 'text') as any} theme={tinybrainsTheme as any} /></div>
+            <div class="bd">
+              <div class="pcard"><div class="tp">{p.data.topic} <span>· {LANG[code!.lang] ?? code!.lang}</span></div></div>
+              <h3>{p.data.title}</h3>
+              <div class="mono muted" style="font-size:11.5px">{p.meta}</div>
+            </div>
+          </a>
+        ))}
+      </div>
+    </section>
+  )}
+
+  <section class="wrap sec lg">
+    <div class="card two newsbox">
+      <div>
+        <div class="eyebrow">// Newsletter</div>
+        <h2>One deep-dive. Every Friday.</h2>
+        <p>~8 min, runnable code, no spam, one-click unsubscribe.</p>
+      </div>
+      <SubscribeForm idSuffix="home" />
+    </div>
+  </section>
+</Base>
+
+<script>
+  import { search, preload, stripTags } from '../lib/search';
+
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* hero headline streams in word by word */
+  const words = Array.from(document.querySelectorAll('#hero-h .w'));
+  if (reduce) words.forEach((w) => w.classList.add('on'));
+  else words.forEach((w, i) => setTimeout(() => w.classList.add('on'), 140 + i * 105));
+
+  /* ask the blog */
+  const input = document.getElementById('ask-q') as HTMLInputElement;
+  const form = document.getElementById('ask') as HTMLFormElement;
+  const panel = document.getElementById('ask-answer')!;
+  const echo = document.getElementById('ask-echo')!;
+  const txt = document.getElementById('ask-text')!;
+  const cur = document.getElementById('ask-cur')!;
+  const hitsEl = document.getElementById('ask-hits')!;
+  const prompts: string[] = JSON.parse(input.dataset.prompts || '[]');
+  let phI = 0;
+  setInterval(() => {
+    if (document.activeElement === input || input.value) return;
+    phI = (phI + 1) % prompts.length;
+    input.placeholder = prompts[phI];
+  }, 2800);
+  input.addEventListener('focus', preload, { once: true });
+
+  let streamTimer: number | undefined;
+  function stream(text: string, done: () => void) {
+    clearInterval(streamTimer);
+    txt.textContent = '';
+    cur.hidden = false;
+    if (reduce) { txt.textContent = text; cur.hidden = true; done(); return; }
+    let n = 0;
+    streamTimer = window.setInterval(() => {
+      n = Math.min(text.length, n + 4);
+      txt.textContent = text.slice(0, n);
+      if (n >= text.length) { clearInterval(streamTimer); cur.hidden = true; done(); }
+    }, 35);
+  }
+
+  async function ask(q: string) {
+    q = q.replace('…', '').trim() || (input.placeholder || '').replace('…', '').trim();
+    if (!q) return;
+    input.value = q;
+    panel.hidden = false;
+    echo.textContent = q;
+    hitsEl.hidden = true;
+    hitsEl.innerHTML = '';
+    txt.textContent = '';
+    cur.hidden = false;
+    const { hits } = await search(q, 3);
+    let text: string;
+    if (hits.length) {
+      const top = hits[0];
+      const ex = stripTags(top.excerpt).trim();
+      text = `${hits.length === 1 ? 'One article covers this' : `${hits.length} articles cover this`}. Start with “${top.title}”${ex ? ` — ${ex.replace(/\s+/g, ' ').slice(0, 220)}${ex.length > 220 ? '…' : ''}` : '.'}`;
+    } else {
+      text = 'Nothing on that yet. Try one of the suggestions below, or browse the archive — new deep-dives land every Friday.';
+    }
+    stream(text, () => {
+      if (!hits.length) return;
+      hits.forEach((h) => {
+        const a = document.createElement('a');
+        a.href = h.url;
+        const t = document.createElement('span'); t.textContent = h.title;
+        const m = document.createElement('span'); m.textContent = h.meta || h.topic;
+        a.append(t, m);
+        hitsEl.appendChild(a);
+      });
+      hitsEl.hidden = false;
+    });
+  }
+  form.addEventListener('submit', (e) => { e.preventDefault(); ask(input.value); });
+  document.querySelectorAll<HTMLButtonElement>('[data-try]').forEach((b) => b.addEventListener('click', () => ask(b.dataset.try || '')));
+  document.getElementById('ask-clear')!.addEventListener('click', () => {
+    clearInterval(streamTimer);
+    panel.hidden = true;
+    input.value = '';
+    input.focus();
+  });
+  const preQ = new URLSearchParams(location.search).get('ask');
+  if (preQ) { ask(preQ); input.scrollIntoView({ block: 'center' }); }
+
+  /* topic map: hover/focus previews a cluster, click opens the filtered archive */
+  const map = document.getElementById('topic-map');
+  if (map) {
+    const select = (t: string) => {
+      map.querySelectorAll<HTMLElement>('.node, .chip[data-topic]').forEach((n) => n.classList.toggle('on', n.dataset.topic === t));
+      map.querySelectorAll<HTMLElement>('.pt').forEach((p) => p.classList.toggle('on', p.dataset.t === t));
+      map.querySelectorAll<HTMLElement>('[data-panel]').forEach((p) => (p.hidden = p.dataset.panel !== t));
+    };
+    select(map.dataset.default || '');
+    map.querySelectorAll<HTMLElement>('[data-topic]').forEach((n) => {
+      n.addEventListener('mouseenter', () => select(n.dataset.topic!));
+      n.addEventListener('focus', () => select(n.dataset.topic!));
+    });
+  }
+</script>
+
+<style>
+  .near-panel[hidden] { display: none !important; }
+</style>

@@ -1,0 +1,40 @@
+---
+import { SITE } from '../config';
+import { url } from '../lib/url';
+
+const [brandMain] = SITE.name.split('.');
+const now = new Date();
+const build = `${now.getUTCFullYear()}.${String(now.getUTCMonth() + 1).padStart(2, '0')}.${String(now.getUTCDate()).padStart(2, '0')}`;
+---
+<footer class="site-footer">
+  <div class="wrap inner">
+    <div class="foot">
+      <div>
+        <a href={url()} class="brand"><span class="mark" aria-hidden="true"></span>{brandMain}</a>
+        <p>{SITE.tagline}. Runnable code, measured results.</p>
+      </div>
+      <div class="col">
+        <span class="label">Read</span>
+        <a href={url('archive/')}>Articles</a>
+        <a href={url('archive/?type=Tutorial')}>Tutorials</a>
+        <a href={url('topics/')}>Topics</a>
+      </div>
+      <div class="col">
+        <span class="label">Site</span>
+        <a href={url('about/')}>About</a>
+        <a href={url('newsletter/')}>Newsletter</a>
+        <a href={url('rss.xml')}>RSS</a>
+      </div>
+      <div class="col">
+        <span class="label">Follow</span>
+        {SITE.socials.map((s) => (
+          <a href={s.href} rel={s.href.startsWith('http') ? 'me noopener' : undefined} target={s.href.startsWith('http') ? '_blank' : undefined}>{s.label}</a>
+        ))}
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <span>© {now.getUTCFullYear()} {SITE.name} · {SITE.author.name}</span>
+      <span class="status"><span class="dot" aria-hidden="true"></span>All systems normal · build {build}</span>
+    </div>
+  </div>
+</footer>

@@ -1,0 +1,15 @@
+---
+import type { PostView } from '../lib/posts';
+import Cover from './Cover.astro';
+interface Props { post: PostView; showLevel?: boolean }
+const { post, showLevel = false } = Astro.props;
+---
+<a href={post.href} class="card lift pcard">
+  <Cover post={post} />
+  <div class="bd">
+    <div class="tp">{post.data.topic} <span>· {post.data.type}{showLevel && ` · ${post.data.level}`}</span></div>
+    <h3>{post.data.title}</h3>
+    <p>{post.data.description}</p>
+    <div class="ft"><span>{post.shortDate}</span><span>{post.meta}</span></div>
+  </div>
+</a>

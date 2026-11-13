@@ -1,0 +1,30 @@
+---
+import Base from '../layouts/Base.astro';
+import { url } from '../lib/url';
+import { getPosts } from '../lib/posts';
+const posts = (await getPosts()).slice(0, 3);
+---
+<Base title="404 — not found" noindex>
+  <section class="wrap nf">
+    <div class="eyebrow">// Error 404</div>
+    <h1>Context <span class="grad-text">not found.</span></h1>
+    <div class="term" style="max-width:620px">
+      <div class="chrome" aria-hidden="true"><i></i><i></i><i></i><span>terminal</span></div>
+      <div class="body">
+        <div><span class="ps">$</span> cat <span id="nf-path">this-page</span></div>
+        <div class="dim">cat: no such file or directory</div>
+        <div><span class="ps">$</span> suggest --nearest<span class="tcur" aria-hidden="true"></span></div>
+        {posts.map((p) => <div><span class="ok">→</span> <a href={p.href}>{p.data.title}</a></div>)}
+      </div>
+    </div>
+    <div class="acts">
+      <a class="btn btn-primary" href={url()}>Go home</a>
+      <a class="btn" href={url('archive/')}>Browse the archive</a>
+      <button class="btn" type="button" data-open-cmd>Search ⌘K</button>
+    </div>
+  </section>
+</Base>
+<script>
+  const el = document.getElementById('nf-path');
+  if (el) el.textContent = location.pathname;
+</script>

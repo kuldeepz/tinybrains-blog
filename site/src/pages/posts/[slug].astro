@@ -1,0 +1,231 @@
+---
+import { render } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+import Cover from '../../components/Cover.astro';
+import { mdxComponents } from '../../components/mdx';
+import { SITE } from '../../config';
+import { url, absUrl } from '../../lib/url';
+import { getPosts, getEntry, related, relDays, fmtDate, archiveHref, isoDate } from '../../lib/posts';
+
+export async function getStaticPaths() {
+  const posts = await getPosts();
+  return posts.map((p) => ({ params: { slug: p.id }, props: { id: p.id } }));
+}
+
+const { id } = Astro.props as { id: string };
+const posts = await getPosts();
+const post = posts.find((p) => p.id === id)!;
+const entry = (await getEntry(id))!;
+const { Content, headings } = await render(entry);
+const d = post.data;
+
+const h2 = headings.filter((h) => h.depth === 2);
+const toc = (h2.length >= 2 ? h2 : headings.filter((h) => h.depth <= 3)).map((h, i) => ({ ...h, n: String(i + 1).padStart(2, '0') }));
+const rel = related(posts, post, 3);
+const sentences = (d.tldr.match(/[^.!?]+[.!?]+(\s|$)/g) || [d.tldr]).length;
+const shareUrl = absUrl(`posts/${post.id}/`, Astro.site);
+const authorCount = posts.filter((p) => p.data.author === d.author).length;
+const isSiteAuthor = d.author === SITE.author.name;
+const initials = isSiteAuthor ? SITE.author.initials : d.author.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+const statusDate = d.updated ?? d.date;
+const statusPrefix = d.updated ? 'Updated' : 'Published';
+---
+<Base title={d.title} description={d.description} image={d.cover} type="article" progress publishedTime={d.date}>
+  <div class="wrap">
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href={url()}>Home</a><span aria-hidden="true">/</span>
+      <a href={archiveHref({ topic: d.topic })}>{d.topic}</a><span aria-hidden="true">/</span>
+      <span class="cur" aria-current="page">{d.title}</span>
+    </nav>
+  </div>
+
+  <div class="wrap art">
+    <aside class="toc" aria-label="On this page">
+      <div class="in">
+        <div class="label" style="margin-bottom:12px">On this page</div>
+        <nav>
+          {toc.map((h) => <a class:list={['toc-link', { d3: h.depth === 3 }]} href={`#${h.slug}`} data-toc={h.slug}><span class="n">{h.n}</span>{h.text}</a>)}
+        </nav>
+        <div class="pct" data-read-pct>0% read</div>
+      </div>
+    </aside>
+
+    <article class="article">
+      <div data-pagefind-body>
+        <span hidden data-pagefind-meta={`topic:${d.topic}`}></span>
+        <span hidden data-pagefind-filter={`topic:${d.topic}`}></span>
+        <div class="meta-row">
+          <a class="tag" href={archiveHref({ topic: d.topic })}>{d.topic}</a>
+          <span>{d.type}</span>
+          <span>{post.readMin} min · {post.tokensLabel} tokens</span>
+          <span class="upd"><span class="dot"></span>{statusPrefix} <time data-rel datetime={statusDate.toISOString()}>{relDays(statusDate)}</time></span>
+          <span class="tag ver" title={`Version ${d.version}`}>v{d.version}</span>
+        </div>
+        <h1>{d.title}</h1>
+        <p class="dek">{d.description}</p>
+        <div class="by" data-pagefind-ignore>
+          <span class="avatar">{initials}</span>
+          <div>
+            <div class="nm">{d.author}</div>
+            <div class="sub">
+              {isSiteAuthor ? `${SITE.author.role} · ` : ''}<time datetime={isoDate(d.date)}>{fmtDate(d.date)}</time>
+              {d.updated && <> · updated <time datetime={isoDate(d.updated)}>{fmtDate(d.updated)}</time></>}
+            </div>
+          </div>
+        </div>
+        <Cover post={post} class="art-cover" fig={false} eager />
+
+        <div class="depth" data-pagefind-ignore>
+          <span class="label">Level</span>
+          <div class="seg static" role="img" aria-label={`Level: ${d.level}`}>
+            {SITE.levels.map((l) => <span class:list={{ on: l === d.level }}>{l}</span>)}
+          </div>
+        </div>
+        <div class="card tldr">
+          <div class="hd"><span><b>◆ TL;DR</b> · summary</span><span>{sentences} sentence{sentences === 1 ? '' : 's'}</span></div>
+          <p><span id="tldr-text" data-full={d.tldr}>{d.tldr}</span><span class="cursor" id="tldr-cur" hidden aria-hidden="true"></span></p>
+        </div>
+
+        {toc.length > 0 && (
+          <div class="tocm" data-pagefind-ignore>
+            <button type="button" id="tocm-btn" aria-expanded="false" aria-controls="tocm-nav">
+              <span class="cur"><span class="lbl">CONTENTS · </span><span id="tocm-cur">{toc[0].text}</span></span><span aria-hidden="true">▾</span>
+            </button>
+            <nav id="tocm-nav" hidden>
+              {toc.map((h) => <a class:list={['toc-link', { d3: h.depth === 3 }]} href={`#${h.slug}`} data-toc={h.slug}><span class="n">{h.n}</span>{h.text}</a>)}
+            </nav>
+          </div>
+        )}
+
+        <div class="prose" id="prose">
+          <Content components={mdxComponents} />
+        </div>
+
+        {d.takeaways.length > 0 && (
+          <section class="card inline-only" style="padding:20px 22px;margin-top:32px" aria-labelledby="kt-inline">
+            <div class="label" id="kt-inline" style="margin-bottom:12px">Key takeaways</div>
+            <ol class="ktk">{d.takeaways.map((t, i) => <li><span>{String(i + 1).padStart(2, '0')}</span><span>{t}</span></li>)}</ol>
+          </section>
+        )}
+        {d.sources.length > 0 && (
+          <section class="inline-only" style="margin-top:32px" aria-labelledby="src-inline">
+            <h2 class="related-h" id="src-inline" style="margin:0 0 12px">Sources</h2>
+            <ol class="res" style="padding-left:1.4em;margin:0">{d.sources.map((s) => <li><a href={s.url} target="_blank" rel="noopener">{s.title} ↗</a></li>)}</ol>
+          </section>
+        )}
+      </div>
+
+      <div data-pagefind-ignore>
+        <div class="share">
+          <span class="label">Share</span><span class="grow"></span>
+          <button class="btn" type="button" id="copy-link" data-url={shareUrl}>Copy link</button>
+          <a class="btn" href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(d.title)}&url=${encodeURIComponent(shareUrl)}`} target="_blank" rel="noopener">X</a>
+          <a class="btn" href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`} target="_blank" rel="noopener">LinkedIn</a>
+        </div>
+
+        <div class="card author-card">
+          <span class="avatar">{initials}</span>
+          <div style="flex:1;min-width:220px">
+            <div class="nm">{d.author}</div>
+            <div class="rl">{isSiteAuthor ? `${SITE.author.role} · ` : ''}{authorCount} article{authorCount === 1 ? '' : 's'}</div>
+            {isSiteAuthor && <div class="bio">{SITE.author.bio}</div>}
+            {isSiteAuthor && <div class="links">{SITE.socials.map((s) => <a href={s.href}>{s.label}</a>)}</div>}
+          </div>
+        </div>
+
+        {rel.length > 0 && (
+          <>
+            <h2 class="related-h">Related articles</h2>
+            <div class="g3">
+              {rel.map((p) => (
+                <a href={p.href} class="card lift rcard">
+                  <Cover post={p} fig={false} />
+                  <div class="bd"><div class="tp">{p.data.topic}</div><div class="tt">{p.data.title}</div><div class="mt">{p.meta}</div></div>
+                </a>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </article>
+
+    <aside class="rail" data-pagefind-ignore aria-label="Article summary">
+      <div class="in">
+        {d.takeaways.length > 0 && (
+          <div class="card box">
+            <div class="label">Key takeaways</div>
+            <ol class="ktk">{d.takeaways.map((t, i) => <li><span>{String(i + 1).padStart(2, '0')}</span><span>{t}</span></li>)}</ol>
+          </div>
+        )}
+        {d.sources.length > 0 && (
+          <div class="card box">
+            <div class="label">Sources</div>
+            <div class="res">{d.sources.map((s) => <a href={s.url} target="_blank" rel="noopener">{s.title} ↗</a>)}</div>
+          </div>
+        )}
+        {d.tags.length > 0 && (
+          <div class="card box">
+            <div class="label">Tags</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px">{d.tags.map((t) => <span class="tag plain">{t}</span>)}</div>
+          </div>
+        )}
+      </div>
+    </aside>
+  </div>
+</Base>
+
+<script>
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* TL;DR streams in */
+  const tl = document.getElementById('tldr-text');
+  const cur = document.getElementById('tldr-cur');
+  if (tl && cur && !reduce) {
+    const full = tl.dataset.full || '';
+    let n = 0;
+    tl.textContent = '';
+    cur.hidden = false;
+    const t = setInterval(() => {
+      n = Math.min(full.length, n + 3);
+      tl.textContent = full.slice(0, n);
+      if (n >= full.length) { clearInterval(t); cur.hidden = true; }
+    }, 35);
+  }
+
+  /* TOC active section */
+  const links = Array.from(document.querySelectorAll<HTMLAnchorElement>('[data-toc]'));
+  const ids = [...new Set(links.map((l) => l.dataset.toc!))];
+  const heads = ids.map((id) => document.getElementById(id)).filter(Boolean) as HTMLElement[];
+  const curLabel = document.getElementById('tocm-cur');
+  let active = '';
+  function onScroll() {
+    let sec = heads[0]?.id || '';
+    for (const h of heads) if (h.getBoundingClientRect().top < 160) sec = h.id;
+    if (sec === active) return;
+    active = sec;
+    links.forEach((l) => l.classList.toggle('on', l.dataset.toc === sec));
+    const a = links.find((l) => l.dataset.toc === sec);
+    if (curLabel && a) curLabel.textContent = a.lastChild?.textContent || '';
+  }
+  addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+
+  /* mobile TOC */
+  const btn = document.getElementById('tocm-btn');
+  const nav = document.getElementById('tocm-nav');
+  btn?.addEventListener('click', () => {
+    const open = nav!.hidden;
+    nav!.hidden = !open;
+    btn.setAttribute('aria-expanded', String(open));
+  });
+  nav?.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).closest('a')) { nav.hidden = true; btn?.setAttribute('aria-expanded', 'false'); }
+  });
+
+  /* copy link */
+  const cl = document.getElementById('copy-link') as HTMLButtonElement | null;
+  cl?.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(cl.dataset.url || location.href); cl.textContent = '✓ Copied'; } catch { cl.textContent = 'Copy failed'; }
+    setTimeout(() => (cl.textContent = 'Copy link'), 1600);
+  });
+</script>

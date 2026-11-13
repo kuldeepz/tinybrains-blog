@@ -1,0 +1,9 @@
+---
+// <PullQuote cite="optional attribution">One memorable sentence.</PullQuote>
+interface Props { cite?: string }
+const { cite } = Astro.props;
+---
+<blockquote class="pullquote">
+  <slot />
+  {cite && <cite>— {cite}</cite>}
+</blockquote>

@@ -1,0 +1,39 @@
+---
+import Base from '../layouts/Base.astro';
+import SubscribeForm from '../components/SubscribeForm.astro';
+import { SITE } from '../config';
+import { url } from '../lib/url';
+import { getPosts, fmtDate } from '../lib/posts';
+
+const posts = await getPosts();
+const sample = posts.slice(0, 3);
+const kinds: Record<string, string> = { 'Deep dive': 'Deep dive', Tutorial: 'Tutorial', Article: 'Read' };
+---
+<Base title="Newsletter" description="One deep-dive, every Friday. Runnable code and measured results." current="newsletter">
+  <section class="wrap sec lg news">
+    <div class="two">
+      <div>
+        <div class="eyebrow">// Newsletter</div>
+        <h1>One deep-dive.<br />Every Friday.</h1>
+        <p class="lede">The week's most useful technique, benchmark or failure — explained with code you can run.</p>
+        <SubscribeForm idSuffix="page" sub="› fridays 07:00 UTC · ~8 min · ~2k tokens" />
+        <div class="facts">
+          <span>frequency</span><span>{SITE.newsletterCadence}</span>
+          <span>spam</span><span>none. one-click unsubscribe</span>
+          <span>archive</span><a href={url('archive/')}>{posts.length} published article{posts.length === 1 ? '' : 's'} →</a>
+          <span>rss</span><a href={url('rss.xml')}>rss.xml →</a>
+        </div>
+      </div>
+      <div class="card issue">
+        <div class="hd"><span>ISSUE #01 · {sample[0] ? fmtDate(sample[0].data.date).toUpperCase() : ''}</span><span>SAMPLE</span></div>
+        <div class="bd">
+          <h3>{sample[0]?.data.title ?? 'First issue coming soon'}</h3>
+          <p>{sample[0]?.data.description ?? 'Subscribe to get the first issue.'}</p>
+          <div class="items">
+            {sample.map((p, i) => <a href={p.href}><span class="n">{String(i + 1).padStart(2, '0')}</span><span><b style="font-weight:600">{kinds[p.data.type] ?? p.data.type}</b> — {p.data.title}</span></a>)}
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</Base>
