@@ -1,0 +1,24 @@
+---
+// Replaces every fenced code block's <pre> (wired via the `pre` MDX component).
+// Adds a header with language, optional filename (```py title="x.py"), and a copy button.
+const props = Astro.props as Record<string, any>;
+const lang: string = props['data-language'] || '';
+const file: string | undefined = props['data-title'];
+const LABELS: Record<string, string> = {
+  py: 'Python', python: 'Python', ts: 'TypeScript', typescript: 'TypeScript', js: 'JavaScript', javascript: 'JavaScript',
+  tsx: 'TSX', jsx: 'JSX', sh: 'Shell', bash: 'Bash', zsh: 'Shell', shell: 'Shell', console: 'Shell', json: 'JSON', yaml: 'YAML', yml: 'YAML',
+  toml: 'TOML', sql: 'SQL', rust: 'Rust', go: 'Go', md: 'Markdown', mdx: 'MDX', html: 'HTML', css: 'CSS', diff: 'Diff', text: 'Text', plaintext: 'Text', txt: 'Text',
+};
+const label = LABELS[lang] ?? (lang ? lang.toUpperCase() : 'Code');
+const noLines = ['text', 'plaintext', 'txt', 'sh', 'bash', 'shell', 'zsh', 'console', ''].includes(lang);
+const { 'data-title': _t, ...rest } = props;
+---
+<div class:list={['cb', { nolines: noLines }]}>
+  <div class="cb-head">
+    <span class="cb-lang">{label}</span>
+    <span class="grow"></span>
+    {file && <span class="cb-file">{file}</span>}
+    <button type="button" class="copy" aria-label="Copy code">Copy</button>
+  </div>
+  <pre {...rest}><slot /></pre>
+</div>

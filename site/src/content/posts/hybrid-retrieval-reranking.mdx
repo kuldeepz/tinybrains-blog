@@ -1,0 +1,178 @@
+---
+title: "Hybrid Retrieval and Reranking, Properly"
+description: "Why BM25 and dense vectors fail differently, how Reciprocal Rank Fusion combines them without score calibration, and where a cross-encoder reranker earns its latency."
+date: 2026-11-06
+updated: 2026-11-11
+topic: "RAG"
+level: "Expert"
+type: "Deep dive"
+tags: ["retrieval", "bm25", "embeddings", "rrf", "reranking", "pgvector"]
+tldr: "Lexical and dense retrievers make uncorrelated mistakes, so fusing them raises recall. Use Reciprocal Rank Fusion because it needs no score normalisation, then spend your latency budget on a cross-encoder that reranks only the top candidates. Measure recall@k for the first stage and nDCG@10 for the final list, separately."
+takeaways:
+  - "BM25 wins on rare tokens (IDs, error codes, names); dense wins on paraphrase. You want both."
+  - "RRF fuses by rank, not score — robust, parameter-light, and hard to beat as a default."
+  - "Rerank 50–100 fused candidates with a cross-encoder; never the whole corpus."
+  - "Evaluate stages separately: first-stage recall caps everything downstream."
+cover: "covers/hybrid-retrieval-reranking.svg"
+sources:
+  - title: "Robertson & Zaragoza (2009) — The Probabilistic Relevance Framework: BM25 and Beyond"
+    url: "https://www.staff.city.ac.uk/~sbrp622/papers/foundations_bm25_review.pdf"
+  - title: "Cormack, Clarke & Büttcher (2009) — Reciprocal Rank Fusion outperforms Condorcet and individual Rank Learning Methods"
+    url: "https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf"
+  - title: "Nogueira & Cho (2019) — Passage Re-ranking with BERT"
+    url: "https://arxiv.org/abs/1901.04085"
+  - title: "Thakur et al. (2021) — BEIR: A Heterogeneous Benchmark for Zero-shot Evaluation of IR Models"
+    url: "https://arxiv.org/abs/2104.08663"
+  - title: "pgvector — open-source vector similarity search for Postgres"
+    url: "https://github.com/pgvector/pgvector"
+  - title: "Sentence Transformers — Cross-Encoders"
+    url: "https://www.sbert.net/docs/cross_encoder/usage/usage.html"
+version: 2
+---
+
+Retrieval quality is the ceiling on RAG quality: if the right passage never reaches the prompt, no model or prompt can recover it. The most reliable way to raise that ceiling isn't a bigger embedding model — it's combining two retrievers that fail in *different* ways, then reordering a short list with a model that reads query and passage together.
+
+## Two retrievers, two blind spots
+
+**BM25** scores a document by the query terms it contains, weighted by how rare each term is across the corpus (IDF) and dampened by term-frequency saturation and document length. For a query `q` with terms `t`:
+
+```text
+score(D, q) = Σ_t  IDF(t) · f(t,D)·(k1 + 1) / ( f(t,D) + k1·(1 − b + b·|D|/avgdl) )
+```
+
+with typical defaults `k1 ≈ 1.2–2.0` and `b = 0.75`. It is fast, needs no training, and is exact about tokens — which is both its strength and its weakness.
+
+**Dense retrieval** embeds query and passage independently with a bi-encoder and compares vectors (usually cosine or dot product). It captures meaning — "car won't start" matches "engine fails to turn over" — but it compresses a passage into a few hundred floats, and rare strings get blurred in that compression.
+
+| Query | BM25 | Dense |
+| --- | --- | --- |
+| `ERR_CONN_RESET 0x80072efd` | ✓ exact token match | ✗ near-random neighbours |
+| "why does my laptop die so fast" → *battery drain* docs | ✗ no shared terms | ✓ paraphrase |
+| Product SKU or person's name | ✓ | often ✗ |
+| Long, conversational question | weak (term noise) | ✓ |
+| New jargon absent from embedding training data | ✓ | ✗ |
+
+The zero-shot results in BEIR made this concrete: across heterogeneous datasets, plain BM25 remained a strong baseline that several dense models failed to beat out of domain. The practical conclusion isn't "BM25 is better" — it's that their errors are weakly correlated, which is exactly the condition under which combining them pays off.
+
+<Diagram src="diagrams/hybrid-pipeline.svg" caption="Fig. 1 — Two first-stage retrievers, fused by rank, then a cross-encoder reorders the top candidates." alt="Pipeline: query goes to BM25 and dense retrievers, results fuse with RRF, then a cross-encoder reranks the top 50." />
+
+## Fusing ranked lists with RRF
+
+The naive fusion — add the scores — doesn't work, because BM25 scores are unbounded and corpus-dependent while cosine similarities live in a narrow band. You'd need per-query normalisation (min–max or z-score), and the result is sensitive to outliers.
+
+**Reciprocal Rank Fusion** sidesteps calibration entirely by using only ranks:
+
+```text
+RRF(d) = Σ_r  1 / (k + rank_r(d))        k = 60 by convention
+```
+
+A document ranked 1st by one retriever and absent from the other still gets a solid score; a document ranked moderately by *both* rises above either list's middle. The constant `k` flattens the curve so that the difference between ranks 1 and 2 doesn't dominate. Cormack et al. introduced it with `k = 60`, and that default has proven hard to improve on without tuning data.
+
+```python title="fusion.py" {8-11}
+from collections import defaultdict
+
+def rrf(rankings: list[list[str]], k: int = 60, top_n: int = 100) -> list[tuple[str, float]]:
+    """Fuse several ranked lists of doc ids (best first) with Reciprocal Rank Fusion."""
+    scores: dict[str, float] = defaultdict(float)
+    for ranking in rankings:
+        for rank, doc_id in enumerate(ranking, start=1):
+            scores[doc_id] += 1.0 / (k + rank)
+    fused = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)
+    return fused[:top_n]
+```
+
+<Callout type="note">
+Weighted RRF — multiplying each list's contribution by a weight — is a reasonable extension when you have labelled queries to tune on. Without them, equal weights are the honest default.
+</Callout>
+
+### Hybrid search inside Postgres
+
+If your chunks already live in Postgres, you can run both retrievers in one query with full-text search and pgvector, then fuse with RRF in SQL. `<=>` is pgvector's cosine-distance operator.
+
+```sql title="hybrid.sql"
+WITH lexical AS (
+  SELECT id, row_number() OVER (ORDER BY ts_rank_cd(tsv, query) DESC) AS rank
+  FROM chunks, websearch_to_tsquery('english', $1) AS query
+  WHERE tsv @@ query
+  ORDER BY rank
+  LIMIT 100
+),
+semantic AS (
+  SELECT id, row_number() OVER (ORDER BY embedding <=> $2) AS rank
+  FROM chunks
+  ORDER BY embedding <=> $2
+  LIMIT 100
+)
+SELECT id, SUM(1.0 / (60 + rank)) AS rrf
+FROM (SELECT * FROM lexical UNION ALL SELECT * FROM semantic) both_lists
+GROUP BY id
+ORDER BY rrf DESC
+LIMIT 50;
+```
+
+Postgres' `ts_rank_cd` isn't BM25 — it lacks IDF and length saturation — but under RRF only the *ordering* matters, so it's often good enough. If lexical quality matters a lot, use a real BM25 index (a search engine, or a Postgres extension that implements BM25) for that branch.
+
+<Callout type="warning">
+Build an HNSW or IVFFlat index on `embedding` before you benchmark latency, and remember both are **approximate**: recall depends on parameters such as `hnsw.ef_search`. Measure first-stage recall with the index on, not against an exact scan.
+</Callout>
+
+## Reranking with a cross-encoder
+
+A bi-encoder never lets the query and passage "see" each other — each is embedded alone. A **cross-encoder** feeds the pair through one transformer and outputs a relevance score, so attention can align every query token with every passage token. Nogueira & Cho showed this substantially improves ranking quality on MS MARCO passage ranking.
+
+The price: one full forward pass per (query, passage) pair, at query time, with nothing precomputable. That's why rerankers only ever see a short candidate list.
+
+```python title="rerank.py" {9-10}
+from sentence_transformers import CrossEncoder
+
+reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
+
+def rerank(query: str, candidates: list[tuple[str, str]], top_k: int = 8):
+    """candidates: (doc_id, text) pairs from the fused first stage."""
+    if not candidates:
+        return []
+    pairs = [(query, text) for _, text in candidates]
+    scores = reranker.predict(pairs, batch_size=32)
+    ranked = sorted(zip(candidates, scores), key=lambda x: x[1], reverse=True)
+    return [(doc_id, float(s)) for (doc_id, _), s in ranked[:top_k]]
+```
+
+Putting the stages together:
+
+```python title="pipeline.py"
+def retrieve(query: str, k_first: int = 100, k_rerank: int = 50, k_final: int = 8):
+    lexical = bm25_search(query, limit=k_first)        # list of doc ids
+    semantic = vector_search(embed(query), limit=k_first)
+    fused = [doc_id for doc_id, _ in rrf([lexical, semantic], top_n=k_rerank)]
+    texts = fetch_texts(fused)                         # {doc_id: text}
+    return rerank(query, [(d, texts[d]) for d in fused], top_k=k_final)
+```
+
+### Choosing the candidate count
+
+Reranker cost grows linearly with the number of candidates and with passage length. The useful range is usually **50–100 candidates of a few hundred tokens each**: enough to recover documents the first stage ranked poorly, small enough to keep latency predictable. Batch the pairs, run on GPU if you have one, and cap passage length to what the reranker was trained on — MiniLM-style cross-encoders truncate long inputs, so a 2,000-token chunk is mostly unseen.
+
+<PullQuote>
+First-stage recall is the ceiling; the reranker only decides the order beneath it.
+</PullQuote>
+
+## Measuring each stage separately
+
+Treat the pipeline as two systems with two metrics:
+
+| Stage | Question it answers | Metric |
+| --- | --- | --- |
+| First stage (BM25, dense, fused) | Is the relevant passage anywhere in the candidates? | Recall@50 / Recall@100 |
+| Reranker | Is it at the top, where the prompt will include it? | nDCG@10, MRR@10 |
+| End to end | Did the model answer correctly from the context? | Task accuracy, citation precision |
+
+If recall@100 is low, no reranker will help — fix chunking, add the lexical branch, or improve the embedding model. If recall is high but nDCG@10 is low, the reranker (or a better one) is the lever. Build a labelled set of a few hundred real queries with known relevant chunks; it pays for itself the first time it stops a regression.
+
+## A pragmatic default
+
+1. Retrieve 100 candidates from BM25 and 100 from a dense index.
+2. Fuse with RRF, `k = 60`, keep the top 50.
+3. Rerank those 50 with a cross-encoder; keep the top 5–10 for the prompt.
+4. Track recall@100 and nDCG@10 on a fixed query set in CI.
+
+Start there, measure, and only then reach for learned fusion weights, query rewriting, or a larger reranker.

@@ -1,0 +1,5 @@
+---
+// Wraps markdown tables for horizontal scroll + styling (wired via the `table` MDX component).
+const props = Astro.props;
+---
+<div class="tbl"><table {...props}><slot /></table></div>

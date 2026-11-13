@@ -1,0 +1,36 @@
+---
+import { SITE } from '../config';
+import { url } from '../lib/url';
+
+interface Props { current?: string; progress?: boolean }
+const { current = '', progress = false } = Astro.props;
+const [brandMain, ...rest] = SITE.name.split('.');
+const tld = rest.length ? '.' + rest.join('.') : '';
+const links = [
+  { key: 'articles', label: 'Articles', href: url('archive/') },
+  { key: 'tutorials', label: 'Tutorials', href: url('archive/?type=Tutorial') },
+  { key: 'topics', label: 'Topics', href: url('topics/') },
+  { key: 'about', label: 'About', href: url('about/') },
+];
+---
+<header class="site-header">
+  <div class="wrap bar">
+    <a href={url()} class="brand" aria-label={`${SITE.name} home`}>
+      <span class="mark" aria-hidden="true"></span>{brandMain}<span class="tld">{tld}</span>
+    </a>
+    <nav class="nav-links" aria-label="Primary">
+      {links.map((l) => <a href={l.href} aria-current={current === l.key ? 'page' : undefined}>{l.label}</a>)}
+    </nav>
+    <div class="header-actions">
+      <button class="search-btn" type="button" data-open-cmd aria-label="Search (Command K)">
+        <span aria-hidden="true">⌕</span><span class="hm">Search…</span><span class="kbd" aria-hidden="true">⌘K</span>
+      </button>
+      <button class="icon-btn" type="button" data-theme-toggle aria-label="Toggle theme">
+        <span class="theme-ico-dark" aria-hidden="true">☾</span><span class="theme-ico-light" aria-hidden="true">☀</span>
+      </button>
+      <button class="btn btn-primary btn-sm hm" type="button" data-open-news>Subscribe</button>
+      <button class="icon-btn burger" type="button" data-open-menu aria-label="Menu" aria-controls="mobile-menu" aria-expanded="false">≡</button>
+    </div>
+  </div>
+  {progress && <div class="progress" id="read-progress" aria-hidden="true"></div>}
+</header>

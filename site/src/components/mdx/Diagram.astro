@@ -1,0 +1,15 @@
+---
+// <Diagram src="diagrams/x.svg" caption="Fig. 1 — …" alt="…" width={640} />
+// `src` is relative to site/public (leading slash optional) or an absolute URL.
+// Without `src`, the children (e.g. inline SVG or markdown) are rendered inside the frame.
+import { url } from '../../lib/url';
+interface Props { src?: string; caption?: string; alt?: string; width?: number | string }
+const { src, caption, alt, width } = Astro.props;
+const resolved = src ? url(src) : undefined;
+---
+<figure class="figure">
+  <div class="frame">
+    {resolved ? <img src={resolved} alt={alt ?? caption ?? ''} width={width} loading="lazy" decoding="async" /> : <slot />}
+  </div>
+  {caption && <figcaption>{caption}</figcaption>}
+</figure>

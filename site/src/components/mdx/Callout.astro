@@ -1,0 +1,12 @@
+---
+// <Callout type="tip|warning|note" title="optional">markdown…</Callout>
+interface Props { type?: 'tip' | 'warning' | 'note'; title?: string }
+const { type = 'note', title } = Astro.props;
+const kind = (['tip', 'warning', 'note'] as const).includes(type as any) ? type : 'note';
+const icon = { tip: '✓', warning: '!', note: 'i' }[kind];
+const label = title ?? { tip: 'Tip', warning: 'Warning', note: 'Note' }[kind];
+---
+<aside class={`callout ${kind}`} role="note" aria-label={label}>
+  <span class="ic" aria-hidden="true">{icon}</span>
+  <div class="ct"><b>{label}</b><div><slot /></div></div>
+</aside>

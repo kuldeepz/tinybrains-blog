@@ -1,0 +1,53 @@
+---
+// <Terminal title="bash">
+// $ python bench.py
+// ✓ done in 2.1s
+// </Terminal>
+// Children are read as plain text, line by line. Lines starting with "$ " get a cyan prompt,
+// "✓"/"✔" green, "✗"/"error" amber, "#" or "//" or "…"/"->" dim. Alternatively pass `lines`.
+interface Props { title?: string; lines?: string | string[] }
+const { title = 'terminal', lines } = Astro.props;
+
+function decode(s: string) {
+  return s
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;|&#x27;/g, "'")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(+n))
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16)))
+    .replace(/&amp;/g, '&');
+}
+
+let raw: string;
+if (Array.isArray(lines)) raw = lines.join('\n');
+else if (typeof lines === 'string') raw = lines;
+else {
+  const html = Astro.slots.has('default') ? await Astro.slots.render('default') : '';
+  raw = decode(
+    html
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<h([1-6])[^>]*>/gi, (_, n) => '\n' + '#'.repeat(+n) + ' ')
+      .replace(/<li[^>]*>/gi, '\n- ')
+      .replace(/<\/(p|h[1-6]|li|div|pre|blockquote|ul|ol)>/gi, '\n')
+      .replace(/<[^>]+>/g, ''),
+  ).replace(/\n{2,}/g, '\n');
+}
+const out = raw.replace(/^\n+|\s+$/g, '').split('\n').map((l) => l.replace(/^\s{0,0}/, ''));
+
+type Seg = { cls?: string; t: string };
+function classify(line: string): Seg[] {
+  if (/^\$\s/.test(line)) return [{ cls: 'ps', t: '$' }, { t: line.slice(1) }];
+  if (/^>\s/.test(line)) return [{ cls: 'key', t: '>' }, { t: line.slice(1) }];
+  if (/^[✓✔]/.test(line)) return [{ cls: 'ok', t: line[0] }, { t: line.slice(1) }];
+  if (/^(✗|✘|error|ERROR|warn|WARN)/.test(line)) return [{ cls: 'err', t: line }];
+  if (/^(#|\/\/|…|\.\.\.|->|→)/.test(line)) return [{ cls: 'dim', t: line }];
+  return [{ t: line }];
+}
+---
+<div class="term">
+  <div class="chrome" aria-hidden="true"><i></i><i></i><i></i><span>{title}</span></div>
+  <pre class="term-out">{out.map((line) => (
+    <div>{classify(line).map((s) => (s.cls ? <span class={s.cls}>{s.t}</span> : s.t))}{line === '' ? ' ' : ''}</div>
+  ))}</pre>
+</div>
+<style>
+  .term-out :global(.err) { color: #fbbf24; }
+</style>
