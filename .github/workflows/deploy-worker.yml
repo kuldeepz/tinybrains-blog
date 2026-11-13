@@ -1,0 +1,82 @@
+name: Deploy Telegram bot (Cloudflare Worker)
+# Deploys bot/worker to Cloudflare and registers the Telegram webhook. No local tooling needed.
+# Needs repo secrets: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, BOT_GITHUB_PAT
+on:
+  push:
+    branches: [main]
+    paths: ["bot/worker/**", ".github/workflows/deploy-worker.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: deploy-worker
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check secrets are configured
+        id: check
+        env:
+          CF: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TG: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          PAT: ${{ secrets.BOT_GITHUB_PAT }}
+        run: |
+          if [ -z "$CF" ] || [ -z "$TG" ] || [ -z "$PAT" ]; then
+            echo "::warning::Bot secrets not set yet - skipping deploy (see README 'Setup')."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.check.outputs.ready == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.check.outputs.ready == 'true'
+        with: { node-version: 22, cache: npm, cache-dependency-path: bot/worker/package-lock.json }
+      - name: Install
+        if: steps.check.outputs.ready == 'true'
+        run: npm ci
+        working-directory: bot/worker
+      - name: Generate webhook secret
+        if: steps.check.outputs.ready == 'true'
+        id: sec
+        run: |
+          S=$(openssl rand -hex 32)
+          echo "::add-mask::$S"
+          echo "value=$S" >> "$GITHUB_OUTPUT"
+      - name: Deploy worker and set its secrets
+        if: steps.check.outputs.ready == 'true'
+        id: deploy
+        working-directory: bot/worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          S_TG: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          S_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+          S_HOOK: ${{ steps.sec.outputs.value }}
+          S_PAT: ${{ secrets.BOT_GITHUB_PAT }}
+        run: |
+          npx wrangler deploy 2>&1 | tee "$RUNNER_TEMP/deploy.log"
+          URL=$(grep -oE 'https://[a-zA-Z0-9.-]+\.workers\.dev' "$RUNNER_TEMP/deploy.log" | head -1)
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          jq -n --arg a "$S_TG" --arg b "$S_CHAT" --arg c "$S_HOOK" --arg d "$S_PAT" \
+            '{TELEGRAM_BOT_TOKEN:$a, TELEGRAM_CHAT_ID:$b, TELEGRAM_WEBHOOK_SECRET:$c, GITHUB_TOKEN:$d}' \
+            > "$RUNNER_TEMP/secrets.json"
+          npx wrangler secret bulk "$RUNNER_TEMP/secrets.json"
+          rm -f "$RUNNER_TEMP/secrets.json"
+      - name: Register Telegram webhook
+        if: steps.check.outputs.ready == 'true'
+        env:
+          TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          SECRET: ${{ steps.sec.outputs.value }}
+          URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          if [ -z "$URL" ]; then echo "::error::No worker URL. In Cloudflare dashboard open Workers & Pages once to create your workers.dev subdomain, then re-run."; exit 1; fi
+          RES=$(curl -s "https://api.telegram.org/bot${TOKEN}/setWebhook" \
+            --data-urlencode "url=${URL%/}/telegram" \
+            --data-urlencode "secret_token=${SECRET}" \
+            --data-urlencode 'allowed_updates=["message","callback_query"]' \
+            -d drop_pending_updates=true)
+          echo "$RES" | grep -q '"ok":true' || { echo "::error::setWebhook failed: $(echo "$RES" | sed "s/${TOKEN}/***/g")"; exit 1; }
+          echo "Webhook set to ${URL%/}/telegram"
+          curl -s "https://api.telegram.org/bot${TOKEN}/sendMessage" -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -d text="🧠 tinybrains bot deployed. Send /help" > /dev/null
