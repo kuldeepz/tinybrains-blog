@@ -110,5 +110,14 @@ jobs:
             -d drop_pending_updates=true)
           echo "$RES" | grep -q '"ok":true' || { echo "::error::setWebhook failed: $(echo "$RES" | sed "s/${TOKEN}/***/g")"; exit 1; }
           echo "Webhook set to ${URL%/}/telegram"
+          CMDS='[{"command":"help","description":"What I can do"},
+                 {"command":"idea","description":"Store an idea only (no writing)"},
+                 {"command":"ideas","description":"List stored ideas"},
+                 {"command":"write","description":"Write now: topic or ids, e.g. T001 T002"},
+                 {"command":"topics","description":"Covered vs pending topics"},
+                 {"command":"status","description":"Progress summary"},
+                 {"command":"drop","description":"Discard an idea, e.g. /drop T003"}]'
+          curl -s "https://api.telegram.org/bot${TOKEN}/setMyCommands" --data-urlencode "commands=${CMDS}" | grep -q '"ok":true' \
+            && echo "Command menu registered"
           curl -s "https://api.telegram.org/bot${TOKEN}/sendMessage" -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
             -d text="🧠 tinybrains bot deployed. Send /help" > /dev/null
