@@ -10,6 +10,7 @@ from . import gitops
 from .drive import Drive
 from .intake import load_private_context
 from .llm import LLM, gather_limited, make_llm
+from .roles.architect import Architect
 from .roles.base import Post
 from .roles.designer import Designer
 from .roles.editor import Editor
@@ -26,13 +27,15 @@ from .topics import Tracker
 log = logging.getLogger("tb.orchestrator")
 
 
-async def team_pipeline(llm: LLM, post: Post, published: list[dict], tg: Telegram) -> Post:
+async def team_pipeline(llm: LLM, post: Post, published: list[dict], tg: Telegram, mode: str = "free") -> Post:
     i = post.team.split("-")[-1]
     pm, res, wr = PM(llm, f"PM#{i}"), Researcher(llm, f"Researcher#{i}"), Writer(llm, f"Writer#{i}")
     ed, de, rv, te = Editor(llm, f"Editor#{i}"), Designer(llm, f"Designer#{i}"), Reviewer(llm, f"Reviewer#{i}"), Tester(llm, f"Tester#{i}")
     try:
         await pm.plan(post, published)
         await res.research(post)
+        if mode == "senior":
+            await Architect(llm, f"Architect#{i}").plan(post)
         await wr.write(post)
         await ed.edit(post)
         await de.design(post)
@@ -72,13 +75,17 @@ async def run_write(topic_ids: list[str], *, open_pr: bool = True, build: bool =
     if not topics:
         tg.send("Nothing to write: those topics are unknown or already in review/published.")
         return []
-    tg.send(f"🚀 {esc(head.team_plan(len(topics), MAX_PARALLEL))}\n" + "\n".join(f"• {t['id']} {esc(t['title'])}" for t in topics))
+    mode = "free"
+    if llm.approver is not None:
+        mode = await llm.approver.choose_mode([f"{t['id']} {t['title']}" for t in topics], llm.azure_ready)
+    tg.send(f"🚀 [{mode}] {esc(head.team_plan(len(topics), MAX_PARALLEL, mode))}\n"
+            + "\n".join(f"• {t['id']} {esc(t['title'])}" for t in topics))
 
     posts = []
     for n, topic in enumerate(topics, 1):
         ctx = await load_private_context(drive, llm, topic) if topic.get("private_files") else ""
         posts.append(Post(topic=topic, team=f"team-{n}", context=ctx))
-    await gather_limited(MAX_PARALLEL, [team_pipeline(llm, p, published, tg) for p in posts])
+    await gather_limited(MAX_PARALLEL, [team_pipeline(llm, p, published, tg, mode) for p in posts])
 
     # dedupe slugs between parallel teams
     seen: set[str] = set()
@@ -119,7 +126,7 @@ async def run_write(topic_ids: list[str], *, open_pr: bool = True, build: bool =
     run_file = RUNS_DIR / f"{run_id}.json"
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
     run_file.write_text(json.dumps({
-        "run": run_id, "usage": llm.usage,
+        "run": run_id, "mode": mode, "usage": llm.usage,
         "posts": [{"topic": p.topic["id"], "slug": p.slug, "ok": p.ok, "pr": p.pr, "error": p.error[:300],
                    "scores": [r.get("score") for r in p.reviews], "log": p.log} for p in posts],
     }, indent=2) + "\n")
