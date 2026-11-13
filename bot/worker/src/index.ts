@@ -114,9 +114,20 @@ async function handleCallback(q: any, env: Env): Promise<void> {
   const [action, prStr, answer] = String(q.data ?? "").split(":");
   const pr = Number(prStr);
   let note = "";
-  if (action === "paid" && prStr && (answer === "yes" || answer === "no")) {
-    await env.APPROVALS.put(prStr, answer, { expirationTtl: 86400 });
-    note = answer === "yes" ? "💸 Paid models approved for this run." : "⏹ Paid models declined.";
+  const PAID_NOTES: Record<string, string> = {
+    yes: "💸 Azure approved for this run.",
+    no: "⏹ Azure declined.",
+    senior: "🏛 Senior mode selected.",
+    mini: "💡 Mini mode selected.",
+    free: "🆓 Free mode selected.",
+  };
+  if (action === "paid" && prStr && answer in PAID_NOTES && /^[\w.-]{1,100}$/.test(prStr)) {
+    if (await env.APPROVALS.get(prStr)) {
+      note = "Already answered for this run.";
+    } else {
+      await env.APPROVALS.put(prStr, answer, { expirationTtl: 86400 });
+      note = PAID_NOTES[answer];
+    }
   } else if (action === "approve" && pr) {
     const r = await gh(env, `/pulls/${pr}/merge`, "PUT", { merge_method: "squash" });
     note = r.ok ? `✅ Merged PR #${pr}. Publishing…` : `⚠️ Merge failed: ${esc((await r.json<any>()).message ?? r.status)}`;
