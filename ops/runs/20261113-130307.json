@@ -10,8 +10,8 @@
     "completion_tokens": 45428,
     "models": {
       "baidu/ernie-5.5-flash-preview:free": 1,
-      "azure:gpt-5.4-mini": 6,
-      "azure:gpt-6.1-sol": 4
+      "paid:mini": 6,
+      "paid:architect": 4
     }
   },
   "posts": [
