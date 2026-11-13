@@ -33,9 +33,9 @@ class RoleConfig:
 
 
 AZURE_TIERS = {
-    "mini": ("AZURE_OPENAI_DEPLOYMENT",),
-    "architect": ("AZURE_OPENAI_DEPLOYMENT_ARCHITECT", "AZURE_OPENAI_DEPLOYMENT"),
-    "small": ("AZURE_OPENAI_DEPLOYMENT_SMALL", "AZURE_OPENAI_DEPLOYMENT"),
+    "mini": ("GEMINI_DEPLOYMENT",),
+    "architect": ("GEMINI_DEPLOYMENT_ARCHITECT", "GEMINI_DEPLOYMENT"),
+    "small": ("GEMINI_DEPLOYMENT_SMALL", "GEMINI_DEPLOYMENT"),
 }
 
 
@@ -80,16 +80,16 @@ class LLM:
                 timeout=300,
                 max_retries=1,
             )
-        if env("AZURE_OPENAI_API_KEY") and env("AZURE_OPENAI_ENDPOINT") and self.force != "openrouter":
+        if env("GEMINI_API_KEY") and env("GEMINI_ENDPOINT") and self.force != "openrouter":
             self._az = AsyncAzureOpenAI(
-                azure_endpoint=env("AZURE_OPENAI_ENDPOINT"),
-                api_key=env("AZURE_OPENAI_API_KEY"),
-                api_version=env("AZURE_OPENAI_API_VERSION", "2025-04-01-preview"),
+                azure_endpoint=env("GEMINI_ENDPOINT"),
+                api_key=env("GEMINI_API_KEY"),
+                api_version=env("GEMINI_API_VERSION", "2025-04-01-preview"),
                 timeout=600,
                 max_retries=1,
             )
         if not (self._or or self._az):
-            raise LLMError("No LLM provider configured: set OPENROUTER_API_KEY and/or AZURE_OPENAI_API_KEY + AZURE_OPENAI_ENDPOINT")
+            raise LLMError("No LLM provider configured: set OPENROUTER_API_KEY and/or GEMINI_API_KEY + GEMINI_ENDPOINT")
         self.usage: dict[str, Any] = {"calls": 0, "free_calls": 0, "paid_calls": 0, "fallbacks": 0,
                                       "prompt_tokens": 0, "completion_tokens": 0, "models": {}}
 
@@ -167,7 +167,7 @@ class LLM:
     async def _call_azure(self, rc: RoleConfig, messages, json_mode: bool) -> str:
         dep = azure_deployment(rc.azure)
         if not dep:
-            raise LLMError("AZURE_OPENAI_DEPLOYMENT not set")
+            raise LLMError("GEMINI_DEPLOYMENT not set")
         kwargs: dict[str, Any] = dict(model=dep, messages=messages, max_completion_tokens=rc.max_tokens)
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}

@@ -67,12 +67,12 @@ Free models are used as fallback when Azure errors; in Free mode, if the free mo
 
 1. openrouter.ai → Keys → Create → secret **`OPENROUTER_API_KEY`** (only free models are used; a little credit raises the free-tier daily limit and pays for web search).
 2. Azure portal → your Azure OpenAI resource → Keys and Endpoint:
-   - secret **`AZURE_OPENAI_ENDPOINT`** (e.g. `https://myres.openai.azure.com`)
-   - secret **`AZURE_OPENAI_API_KEY`**
+   - secret **`GEMINI_ENDPOINT`** (e.g. `https://myres.openai.azure.com`)
+   - secret **`GEMINI_API_KEY`**
    - **Variables** tab:
-     - **`AZURE_OPENAI_DEPLOYMENT`** = your **mini** deployment name (e.g. `gpt-5-mini`): writes the posts
-     - **`AZURE_OPENAI_DEPLOYMENT_ARCHITECT`** = your **strongest** deployment (e.g. a `gpt-6.1-sol` deployment): writes the brief and reviews in Senior mode (falls back to the mini one if unset)
-     - optional `AZURE_OPENAI_DEPLOYMENT_SMALL` (cheapest, for helper roles) and `AZURE_OPENAI_API_VERSION` (default `2025-04-01-preview`, needed for reasoning models such as GPT-6.1 Sol)
+     - **`GEMINI_DEPLOYMENT`** = your **mini** deployment name (e.g. `gpt-5-mini`): writes the posts
+     - **`GEMINI_DEPLOYMENT_ARCHITECT`** = your **strongest** deployment (e.g. a `gpt-6.1-sol` deployment): writes the brief and reviews in Senior mode (falls back to the mini one if unset)
+     - optional `GEMINI_DEPLOYMENT_SMALL` (cheapest, for helper roles) and `GEMINI_API_VERSION` (default `2025-04-01-preview`, needed for reasoning models such as GPT-6.1 Sol)
 
 ### Step 3 — GitHub token for the bot (≈2 min)
 github.com → Settings → Developer settings → **Fine-grained tokens** → Generate:

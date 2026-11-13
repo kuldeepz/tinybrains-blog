@@ -1,9 +1,9 @@
 # Model plan per agent role.
 #   free:  OpenRouter FREE models only, tried in order (OpenRouter falls through the list).
 #   azure: Azure OpenAI tier used for paid calls:
-#            mini      -> AZURE_OPENAI_DEPLOYMENT            (e.g. your gpt-5-mini deployment)
-#            architect -> AZURE_OPENAI_DEPLOYMENT_ARCHITECT  (your strongest model; falls back to mini)
-#            small     -> AZURE_OPENAI_DEPLOYMENT_SMALL      (falls back to mini)
+#            mini      -> GEMINI_DEPLOYMENT            (e.g. your gpt-5-mini deployment)
+#            architect -> GEMINI_DEPLOYMENT_ARCHITECT  (your strongest model; falls back to mini)
+#            small     -> GEMINI_DEPLOYMENT_SMALL      (falls back to mini)
 #   reasoning_effort: low|medium|high, sent to Azure reasoning models only (ignored if unsupported).
 #   prefer_paid: in Senior/Mini mode use Azure first (free models become the fallback).
 # Every /write asks you in Telegram: 🏛 Senior / 💡 Mini / 🆓 Free. Nothing on Azure runs without your tap.

@@ -14,7 +14,7 @@ from unittest import mock
 TMP = Path(tempfile.mkdtemp(prefix="tb-test-"))
 os.environ["TB_ROOT"] = str(TMP)
 os.environ["TB_NO_PUSH"] = "1"
-for k in ("TELEGRAM_BOT_TOKEN", "GDRIVE_FOLDER_ID", "OPENROUTER_API_KEY", "AZURE_OPENAI_API_KEY"):
+for k in ("TELEGRAM_BOT_TOKEN", "GDRIVE_FOLDER_ID", "OPENROUTER_API_KEY", "GEMINI_API_KEY"):
     os.environ.pop(k, None)
 
 from agents import llm as llm_mod  # noqa: E402
@@ -146,11 +146,11 @@ class TestHelpers(unittest.TestCase):
         ET.fromstring(cover_svg("A <title> & more", "Agents", "seed"))
 
     def _client(self, approver=None):
-        os.environ.update(OPENROUTER_API_KEY="x", AZURE_OPENAI_API_KEY="y", AZURE_OPENAI_ENDPOINT="https://e.openai.azure.com",
-                          AZURE_OPENAI_DEPLOYMENT="gpt-mini", AZURE_OPENAI_DEPLOYMENT_ARCHITECT="gpt-big")
+        os.environ.update(OPENROUTER_API_KEY="x", GEMINI_API_KEY="y", GEMINI_ENDPOINT="https://e.openai.azure.com",
+                          GEMINI_DEPLOYMENT="gpt-mini", GEMINI_DEPLOYMENT_ARCHITECT="gpt-big")
         self.addCleanup(lambda: [os.environ.pop(k, None) for k in
-                                 ("OPENROUTER_API_KEY", "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_ENDPOINT",
-                                  "AZURE_OPENAI_DEPLOYMENT", "AZURE_OPENAI_DEPLOYMENT_ARCHITECT")])
+                                 ("OPENROUTER_API_KEY", "GEMINI_API_KEY", "GEMINI_ENDPOINT",
+                                  "GEMINI_DEPLOYMENT", "GEMINI_DEPLOYMENT_ARCHITECT")])
         client = llm_mod.LLM(approver=approver)
         self.calls = []
 
@@ -296,7 +296,7 @@ class TestAzureReasoning(unittest.TestCase):
 
     def test_reasoning_effort_sent_and_dropped_if_rejected(self):
         llm, calls = self._llm([Exception("Unsupported parameter: reasoning_effort"), _Resp("ok")])
-        with mock.patch.dict(os.environ, {"AZURE_OPENAI_DEPLOYMENT": "mini", "AZURE_OPENAI_DEPLOYMENT_ARCHITECT": "sol"}):
+        with mock.patch.dict(os.environ, {"GEMINI_DEPLOYMENT": "mini", "GEMINI_DEPLOYMENT_ARCHITECT": "sol"}):
             out = asyncio.run(llm._call_azure(llm_mod.load_role("architect"), [], False))
         self.assertEqual(out, "ok")
         self.assertEqual(calls[0]["reasoning_effort"], "high"); self.assertEqual(calls[0]["model"], "sol")
@@ -304,7 +304,7 @@ class TestAzureReasoning(unittest.TestCase):
 
     def test_budget_exhausted_by_thinking_retries_bigger(self):
         llm, calls = self._llm([_Resp("", "length"), _Resp("", "length"), _Resp("brief")])
-        with mock.patch.dict(os.environ, {"AZURE_OPENAI_DEPLOYMENT": "mini"}):
+        with mock.patch.dict(os.environ, {"GEMINI_DEPLOYMENT": "mini"}):
             out = asyncio.run(llm._call_azure(llm_mod.load_role("architect"), [], False))
         self.assertEqual(out, "brief")
         self.assertEqual([c["max_completion_tokens"] for c in calls], [32000, 64000, 100000])
