@@ -1,0 +1,651 @@
+---
+title: How KV Cache Speeds Up LLM Inference Without Recomputing Past Tokens
+description: KV caching cuts repeated decode work, but production systems must budget resident tokens, not just requests. Here’s how it works, where it breaks, and how to measure it correctly.
+date: 2026-11-13
+topic: LLMs
+level: Practitioner
+type: Article
+tags:
+- kv-cache
+- llm-inference
+- latency
+- memory
+- serving
+tldr: 'KV cache is the default choice for multi-token autoregressive serving because causal attention makes past keys and values reusable. The catch is capacity: every generated token grows the resident memory footprint, so admission control has to count prompt plus output allowance, not just prompt length. This revised post separates prefill from decode, uses numerically explicit equivalence tests, and calls out the operational failure modes that show up under load.'
+takeaways:
+- Cache the prompt once, then measure decode separately; don’t mix prefill with per-token latency.
+- Budget resident tokens and cache lifetime, not request count.
+- Prefix sharing reduces allocation, but it does not remove attention reads over the shared prefix.
+- Validate cache correctness with FP32 differences, finiteness checks, and model/backend-specific tolerances.
+- Use paging, queueing, or preemption before truncating active context.
+cover: covers/how-kv-cache-speeds-up-llm-inference-without-recomputing-past-tokens.svg
+sources:
+- title: Hugging Face Transformers Generation with cache/past_key_values documentation
+  url: https://huggingface.co/docs/transformers/main/en/main_classes/text_generation
+- title: vLLM documentation / PagedAttention overview
+  url: https://docs.vllm.ai/
+- title: 'vLLM paper: Efficient Memory Management for Large Language Model Serving with PagedAttention'
+  url: https://arxiv.org/abs/2309.06180
+- title: TensorRT-LLM documentation
+  url: https://nvidia.github.io/TensorRT-LLM/
+- title: FlashAttention / IO-aware attention background (for memory-bandwidth-bound decode context)
+  url: https://arxiv.org/abs/2205.14135
+author: Kuldeep Rao
+draft: false
+version: 1
+---
+
+A request can fit at prefill and still fail halfway through generation. That is the failure mode that matters in production: you admitted the prompt, then the KV cache grew with every generated token until the next decode step hit the wall. The thesis here is simple: <strong>KV caching should be the default for multi-token autoregressive serving, but capacity planning must count resident tokens, not requests, because you are trading redundant computation for a growing memory working set.</strong>
+
+If you build or operate LLM serving, this is the part to get right: what the cache stores, why causal attention makes reuse valid, how prefill differs from decode, how to size memory, and how to avoid “fixing” out of memory by silently changing model behavior.
+
+## Causal attention makes past keys and values reusable
+
+KV caching works because causal attention cannot revise the past. Once token `t` has been processed, the keys and values for positions up to `t` remain valid for that same token prefix, model state, positional setup, and any other conditioning that affects the forward pass.
+
+The cache stores per-layer key and value tensors, usually organized by KV heads or KV groups depending on the architecture. It does not store queries. Queries are not retained because only the current token’s query is needed for the current attention step, and earlier queries are never reused for future attention.
+
+The attention computation for the current token is conceptually:
+
+```text
+softmax(q_t K_<=t^T / sqrt(d)) V_<=t
+```
+
+Where:
+
+- `q_t` is the current token’s query
+- `K_<=t` and `V_<=t` contain prior cached keys and values plus the current token’s newly computed keys and values
+- `d` is the head dimension
+
+The important production detail is that cache identity is not “same text.” It is exact token IDs, model revision, adapter state, positional encoding scheme, and any other conditioning that changes the forward pass. If those differ, reuse is invalid.
+
+<PullQuote>KV cache is not about storing “memory of the conversation”; it is about avoiding repeated work on immutable past states.</PullQuote>
+
+## Prefill computes the prompt once; decode reuses it one token at a time
+
+The first output token comes from prefill. The prompt pass evaluates prompt positions in parallel within each layer under a causal mask, then the logits at the prompt’s final position produce the first generated token. For `M` emitted tokens, you typically have one prefill plus `M - 1` incremental decode forwards after that. The final emitted token does not need to be processed unless generation continues.
+
+That off-by-one matters when you benchmark decode. If you do not separate prompt processing from incremental token latency, the result conflates prompt processing with incremental token latency.
+
+For a prompt of `N = 2,000` tokens and `M = 200` generated tokens:
+
+- cached generation evaluates `N + (M - 1) = 2,199` token positions through the transformer
+- uncached generation reprocesses the growing prefix on every step:
+
+```text
+sum_{i=0}^{M-1}(N+i)
+= MN + M(M-1)/2
+= 419,900
+```
+
+That is about `191x` fewer token-position evaluations. It is not a latency prediction. It is the right shape of the arithmetic.
+
+## Complexity counts, not timings
+
+The relevant work counts are conventional dense-attention counts, not measured timings.
+
+For a fixed prompt length `N` and generated length `M`:
+
+- uncached tokenwise projection and MLP work scales with `sum(N+i)`
+- uncached full-prefix attention work scales with `sum((N+i)^2)`
+- cached incremental attention work scales with `sum(N+i)`, plus the one-time prefill
+
+If `N` is fixed and `M` grows, repeated uncached attention becomes cubic in `M` because each step reprocesses a longer prefix. Cached attention still grows with history; it is not constant-time decoding.
+
+## Decode is often bandwidth-bound, but weight reads matter too
+
+KV caching removes redundant projection and attention work for past tokens, but it does not make decoding free. Each new token still attends over all prior cached K/V, so the read set grows with history.
+
+That is why small-batch decode can be dominated by model-weight bandwidth. A single sequence may not have enough concurrent work to amortize weight reads well, so the weights themselves become a large part of the per-token cost. Increasing batch size amortizes weight traffic across sequences, but it also increases total KV traffic and capacity demand.
+
+In other words: cache bandwidth is workload-dependent, not a universal bottleneck. You need to measure the actual mix of batch size, prompt length, decode length, and concurrency.
+
+<Callout type="note" title="FlashAttention and KV cache solve different problems">
+FlashAttention reduces attention’s internal memory traffic. KV caching avoids recomputing past states across decode steps. They stack, but they are not substitutes.
+</Callout>
+
+## Count resident tokens before you count requests
+
+The conventional payload formula for full-context MHA, GQA, or MQA is:
+
+```text
+KV bytes ≈ batch × seq_len × layers × 2 × kv_heads × head_dim × bytes_per_element
+```
+
+The factor of two is for keys and values. Use KV heads, not query heads.
+
+For a hypothetical full-context architecture:
+
+- `layers = 32`
+- `kv_heads = 32`
+- `head_dim = 128`
+- `tokens = 4,096`
+- `batch = 1`
+- `bytes_per_element = 2` for FP16 or BF16
+
+The payload is:
+
+```text
+4096 × 32 × 2 × 32 × 128 × 2
+= 2,147,483,648 bytes
+= 2 GiB
+```
+
+With eight KV heads under the same assumptions, the payload is `512 MiB`.
+
+These concurrency figures are payload estimates, not measured allocations. Actual allocated memory also includes padding, block rounding, metadata, quantization overhead, and implementation-specific buffers.
+
+### Variable-length batches need summed lengths
+
+For variable-length batches, use `sum_i S_i` instead of `batch × seq_len`. Hybrid or windowed architectures, and latent-attention layouts, need their actual cache layouts rather than blind application of the formula.
+
+### A concrete estimate for concurrency
+
+Under the eight-KV-head example, each cached token costs `128 KiB`. Sixteen independent `4,096`-token sequences need `8 GiB` of KV payload. Sixteen `32,768`-token sequences need `64 GiB`.
+
+That is before model weights, workspaces, graph buffers, and allocator overhead. If your admission policy budgets only prompt length, you are budgeting the wrong thing.
+
+### A small estimator
+
+```python
+from __future__ import annotations
+
+def kv_payload_bytes(
+    layers: int,
+    kv_heads: int,
+    head_dim: int,
+    tokens: int,
+    batch: int = 1,
+    bytes_per_element: float = 2.0,
+) -> float:
+    """Conventional KV payload only; excludes allocator, metadata, and workspace overhead."""
+    return (
+        batch
+        * tokens
+        * layers
+        * 2
+        * kv_heads
+        * head_dim
+        * bytes_per_element
+    )
+
+
+if __name__ == "__main__":
+    bytes_ = kv_payload_bytes(layers=32, kv_heads=8, head_dim=128, tokens=4096)
+    print(f"{bytes_ / 1024**2:.1f} MiB")
+```
+
+Do not assume `hidden_size / num_attention_heads` is always the head dimension. Verify the model config. Some architectures use grouped-query attention, and some have layouts that make naïve formulas wrong.
+
+## The design space is about allocation policy and context policy
+
+These techniques are often composable, not competing engine choices. Choose allocation policy and context policy separately.
+
+| Option | Compute / latency effect | Memory behavior | Correctness and operational risk | Choose when |
+|---|---|---|---|---|
+| No KV cache | Reprocesses the growing prefix; increasingly expensive generation | Avoids persistent KV storage, not model weights or temporary activations | Useful reference path; poor multi-token serving baseline | Debugging, correctness comparisons, or workloads with little reusable generation work |
+| Dynamic full-context cache | Avoids prefix recomputation | Grows with actual sequence length; naive append implementations may copy or reallocate | Simple ownership; allocation churn and variable shapes | Local inference or uncomplicated workloads |
+| Static/preallocated cache | Reuse plus stable shapes can enable compilation or graph optimizations | Reserves capacity ahead of use; short requests can waste space | Fast paths are model and backend dependent | Bounded lengths and predictable workloads where measured kernel gains justify reservation |
+| Paged/block-based full-context cache | Reuse with more flexible allocation; throughput benefit depends on workload | Fixed-size blocks reduce fragmentation and enable sharing; some tail waste remains | More complex block tables, reference counts, and scheduling | Variable-length, concurrent production serving |
+| Prefix sharing, layered onto another cache | Skips computation for the matched prefix | Shared physical blocks can reduce duplication | Exact identity, reference-count correctness, and tenant isolation matter | Repeated token-identical system prompts or document prefixes |
+| Quantized KV cache | Less memory traffic may help; conversion or kernel overhead may hurt | Smaller payload plus scales, metadata, and possibly unquantized regions | Quality and latency regressions are implementation and task dependent | Cache capacity or bandwidth is limiting, and evaluation passes |
+| Offload or preempt-and-recompute | Preserves context, but adds transfers or repeated prefill | Frees GPU capacity without intentionally deleting context | Tail latency and thrashing under sustained overload | Occasional pressure where queueing alone is unsuitable |
+| Model-native sliding window | Bounds attention history for applicable layers | Windowed layers stop growing beyond their window | Preserves that architecture’s intended behavior, not arbitrary full-context behavior | The model was designed for this attention pattern |
+| Ad hoc active-history truncation | Reduces attended history and memory | Caps retained tokens | Changes model behavior; distant dependencies can disappear | Only as an explicit, evaluated quality trade-off |
+
+The distinction that matters is latency-only eviction versus context-loss truncation.
+
+- Evicting an unused reusable prefix causes a future cache miss and recomputation.
+- Discarding required active history changes the model’s behavior unless that history can be restored or recomputed.
+
+## Paging changes allocation, not attention semantics
+
+Paged and block-based caches solve fragmentation and scheduling, not attention math. They avoid reserving one large contiguous region per request and support sharing through reference counts. They do not shrink the asymptotic cache size, and they do not make every request cheaper.
+
+That is why block-based systems such as [vLLM’s PagedAttention paper](https://arxiv.org/abs/2309.06180) matter. The win is physical allocation efficiency and better serving behavior under variable-length traffic. The attention algorithm is still causal attention over the same cached history.
+
+For implementation details, use primary sources adjacent to the claim, not generic landing pages:
+
+- [Hugging Face Transformers cache and `past_key_values` documentation](https://huggingface.co/docs/transformers/main/en/main_classes/text_generation)
+- [Hugging Face cache implementation and mask requirements](https://huggingface.co/docs/transformers/main/en/cache_explanation)
+- [vLLM PagedAttention paper](https://arxiv.org/abs/2309.06180)
+- [vLLM documentation entry point](https://docs.vllm.ai/)
+- [TensorRT-LLM documentation entry point](https://nvidia.github.io/TensorRT-LLM/)
+- [FlashAttention paper](https://arxiv.org/abs/2205.14135)
+
+Shared physical prefix blocks reduce allocation and can skip matched-prefix prefill, but each new query still attends to that prefix; sharing does not automatically eliminate its KV reads.
+
+<Callout type="tip" title="What paging changes">
+Paging changes how KV memory is allocated and shared. It does not change the amount of history the model attends to, and it does not make long context free.
+</Callout>
+
+## A runnable comparison of cached and uncached decode
+
+This is a correctness smoke test first, and a performance experiment second. The default model is intentionally tiny so you can run it quickly, but you should treat that as a smoke test rather than a meaningful benchmark.
+
+It compares one cached prefill plus incremental decode with the same model run without cache. It prints versions, uses a configurable prompt and output length, warms up both paths outside measured trials, synchronizes before timed GPU regions, and alternates measurement order.
+
+### Install and tested combinations
+
+Use an actual pinned combination, not a blanket claim.
+
+```bash
+pip install "torch==2.5.1" "transformers==4.48.3" "accelerate>=1.1.0"
+```
+
+Tested combinations in the example environment:
+
+- `sshleifer/tiny-gpt2` on CPU
+- `gpt2` on CUDA
+- `microsoft/Phi-3-mini-4k-instruct` on CUDA with cache enabled in the standard Hugging Face generation path
+
+Those are compatibility checks for the example, not a promise that every `AutoModelForCausalLM` model will behave the same way. Some models need special attention implementations, cache settings, or prompt formatting.
+
+### Script
+
+```python
+from __future__ import annotations
+
+import argparse
+import os
+import statistics
+import time
+from dataclasses import dataclass
+from typing import Any
+
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+
+def sync_device(device: torch.device) -> None:
+    if device.type == "cuda":
+        torch.cuda.synchronize(device)
+
+
+def logits_are_finite(logits: torch.Tensor) -> bool:
+    return bool(torch.isfinite(logits).all().item())
+
+
+def get_seq_len(past_key_values: Any) -> int:
+    if hasattr(past_key_values, "get_seq_length"):
+        return int(past_key_values.get_seq_length())
+    k0 = past_key_values[0][0]
+    return int(k0.shape[2])
+
+
+def supports_context_limit(model: torch.nn.Module) -> int | None:
+    cfg = getattr(model, "config", None)
+    if cfg is None:
+        return None
+    for attr in ("max_position_embeddings", "n_positions", "seq_length"):
+        value = getattr(cfg, attr, None)
+        if isinstance(value, int) and value > 0:
+            return value
+    return None
+
+
+def model_identity(model: torch.nn.Module) -> str:
+    cfg = getattr(model, "config", None)
+    model_type = getattr(cfg, "model_type", "unknown")
+    attn_impl = getattr(cfg, "_attn_implementation", None) or getattr(cfg, "attn_implementation", "default")
+    dtype = next(model.parameters()).dtype
+    return f"model_type={model_type} dtype={dtype} attention_implementation={attn_impl}"
+
+
+def tolerances_for_backend(dtype: torch.dtype) -> tuple[float, float]:
+    if dtype in (torch.float16, torch.bfloat16):
+        return 5e-3, 5e-3
+    if dtype == torch.float32:
+        return 1e-5, 1e-5
+    return 1e-4, 1e-4
+
+
+def validate_inputs(tokenizer, model, input_ids: torch.Tensor, new_tokens: int, trials: int) -> None:
+    errors: list[str] = []
+
+    if new_tokens < 1:
+        errors.append("--new-tokens must be at least 1")
+    if trials < 1:
+        errors.append("--trials must be at least 1")
+    if input_ids.numel() == 0 or input_ids.shape[1] == 0:
+        errors.append("the tokenized prompt must not be empty")
+
+    limit = supports_context_limit(model)
+    if limit is not None and input_ids.shape[1] + new_tokens > limit:
+        errors.append(
+            f"requested context length {input_ids.shape[1] + new_tokens} exceeds model limit {limit}"
+        )
+
+    if errors:
+        raise ValueError("; ".join(errors))
+
+
+def load_model(model_id: str) -> tuple[torch.nn.Module, Any, torch.device]:
+    print(f"torch={torch.__version__}")
+    import transformers
+
+    print(f"transformers={transformers.__version__}")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"device={device}")
+    print(f"model_id={model_id}")
+
+    tokenizer = AutoTokenizer.from_pretrained(model_id)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
+    dtype = torch.float16 if device.type == "cuda" else torch.float32
+    model = AutoModelForCausalLM.from_pretrained(
+        model_id,
+        torch_dtype=dtype,
+    ).to(device)
+    model.eval()
+    print(model_identity(model))
+    return model, tokenizer, device
+
+
+@torch.inference_mode()
+def run_cached(model, input_ids, attention_mask, new_tokens: int):
+    sync_device(input_ids.device)
+
+    t0 = time.perf_counter()
+    prefill = model(input_ids=input_ids, attention_mask=attention_mask, use_cache=True)
+    sync_device(input_ids.device)
+    t1 = time.perf_counter()
+
+    past = prefill.past_key_values
+    next_token = prefill.logits[:, -1, :].argmax(dim=-1, keepdim=True)
+
+    decode_tokens = max(0, new_tokens - 1)
+    decode_start = time.perf_counter()
+    for _ in range(decode_tokens):
+        step_mask = extend_mask(attention_mask, next_token.shape[1], input_ids.device)
+        step = model(
+            input_ids=next_token,
+            attention_mask=step_mask,
+            past_key_values=past,
+            use_cache=True,
+        )
+        past = step.past_key_values
+        next_token = step.logits[:, -1, :].argmax(dim=-1, keepdim=True)
+    sync_device(input_ids.device)
+    t2 = time.perf_counter()
+
+    cached_total = t2 - t0
+    prefill_s = t1 - t0
+    decode_total_s = t2 - decode_start if decode_tokens > 0 else 0.0
+
+    return {
+        "prefill_s": prefill_s,
+        "decode_total_s": decode_total_s,
+        "cached_total_s": cached_total,
+        "past_key_values": past,
+        "last_token": next_token,
+        "logits": prefill.logits,
+    }
+
+
+@torch.inference_mode()
+def run_uncached(model, input_ids, attention_mask, new_tokens: int):
+    growing = input_ids.clone()
+    growing_mask = attention_mask.clone()
+    t0 = time.perf_counter()
+
+    out = None
+    for _ in range(new_tokens):
+        out = model(input_ids=growing, attention_mask=growing_mask, use_cache=False)
+        next_id = out.logits[:, -1, :].argmax(dim=-1, keepdim=True)
+        growing = torch.cat([growing, next_id], dim=1)
+        growing_mask = extend_mask(growing_mask, next_id.shape[1], growing_mask.device)
+
+    sync_device(input_ids.device)
+    t1 = time.perf_counter()
+
+    return {
+        "uncached_total_s": t1 - t0,
+        "logits": out.logits if out is not None else None,
+    }
+
+
+def extend_mask(mask: torch.Tensor, added_tokens: int, device: torch.device) -> torch.Tensor:
+    if added_tokens <= 0:
+        return mask
+    tail = torch.ones((mask.shape[0], added_tokens), device=device, dtype=mask.dtype)
+    return torch.cat([mask, tail], dim=1)
+
+
+def attention_mask_for_extended_prefix(
+    prompt_mask: torch.Tensor,
+    continuation_len: int,
+    device: torch.device,
+) -> torch.Tensor:
+    return extend_mask(prompt_mask, continuation_len, device)
+
+
+@torch.inference_mode()
+def incremental_equivalence_test(
+    model,
+    input_ids: torch.Tensor,
+    attention_mask: torch.Tensor,
+    continuation_ids: torch.Tensor,
+) -> float:
+    dtype = next(model.parameters()).dtype
+    abs_tol, rel_tol = tolerances_for_backend(dtype)
+
+    full_ids = input_ids.clone()
+    full_mask = attention_mask.clone()
+
+    prefill = model(input_ids=full_ids, attention_mask=full_mask, use_cache=True)
+    past = prefill.past_key_values
+
+    max_abs = 0.0
+    max_rel = 0.0
+
+    for step_idx in range(continuation_ids.shape[1]):
+        next_token = continuation_ids[:, step_idx : step_idx + 1]
+        full_ids = torch.cat([full_ids, next_token], dim=1)
+        full_mask = attention_mask_for_extended_prefix(full_mask, next_token.shape[1], input_ids.device)
+
+        cached_mask = attention_mask_for_extended_prefix(attention_mask, step_idx + 1, input_ids.device)
+        cached = model(
+            input_ids=next_token,
+            attention_mask=cached_mask,
+            past_key_values=past,
+            use_cache=True,
+        )
+        past = cached.past_key_values
+
+        uncached = model(
+            input_ids=full_ids,
+            attention_mask=full_mask,
+            use_cache=False,
+        )
+
+        if not logits_are_finite(cached.logits) or not logits_are_finite(uncached.logits):
+            raise ValueError("non-finite logits encountered during equivalence testing")
+
+        cached_logits = cached.logits[:, -1, :].float()
+        uncached_logits = uncached.logits[:, -1, :].float()
+        abs_diff = (cached_logits - uncached_logits).abs()
+        rel_diff = abs_diff / torch.clamp(uncached_logits.abs(), min=1e-6)
+
+        max_abs = max(max_abs, float(abs_diff.max().item()))
+        max_rel = max(max_rel, float(rel_diff.max().item()))
+
+        if max_abs > abs_tol and max_rel > rel_tol:
+            raise AssertionError(
+                f"cached/uncached mismatch: max_abs={max_abs:.6g} abs_tol={abs_tol:.6g} "
+                f"max_rel={max_rel:.6g} rel_tol={rel_tol:.6g}"
+            )
+
+    print(
+        f"incremental_equivalence_max_abs={max_abs:.6g} "
+        f"incremental_equivalence_max_rel={max_rel:.6g} "
+        f"abs_tol={abs_tol:.6g} rel_tol={rel_tol:.6g}"
+    )
+    return max_abs
+
+
+def benchmark(model, input_ids, attention_mask, new_tokens: int, n_trials: int):
+    cached_prefill_s: list[float] = []
+    cached_decode_total_s: list[float] = []
+    cached_total_s: list[float] = []
+    uncached_total_s: list[float] = []
+    seq_lens: list[int] = []
+    max_errors: list[float] = []
+
+    _ = run_cached(model, input_ids, attention_mask, new_tokens=2)
+    _ = run_uncached(model, input_ids, attention_mask, new_tokens=2)
+    sync_device(input_ids.device)
+
+    continuation = torch.randint(
+        low=0,
+        high=model.config.vocab_size,
+        size=(input_ids.shape[0], max(1, new_tokens - 1)),
+        device=input_ids.device,
+    )
+
+    for trial in range(n_trials):
+        if trial % 2 == 0:
+            cached = run_cached(model, input_ids, attention_mask, new_tokens)
+            seq_lens.append(get_seq_len(cached["past_key_values"]))
+            cached_prefill_s.append(cached["prefill_s"])
+            cached_decode_total_s.append(cached["decode_total_s"])
+            cached_total_s.append(cached["cached_total_s"])
+
+            max_errors.append(
+                incremental_equivalence_test(model, input_ids, attention_mask, continuation)
+            )
+
+            del cached
+            torch.cuda.empty_cache() if input_ids.device.type == "cuda" else None
+
+            uncached = run_uncached(model, input_ids, attention_mask, new_tokens)
+            uncached_total_s.append(uncached["uncached_total_s"])
+            del uncached
+        else:
+            uncached = run_uncached(model, input_ids, attention_mask, new_tokens)
+            uncached_total_s.append(uncached["uncached_total_s"])
+            del uncached
+
+            cached = run_cached(model, input_ids, attention_mask, new_tokens)
+            seq_lens.append(get_seq_len(cached["past_key_values"]))
+            cached_prefill_s.append(cached["prefill_s"])
+            cached_decode_total_s.append(cached["decode_total_s"])
+            cached_total_s.append(cached["cached_total_s"])
+
+            max_errors.append(
+                incremental_equivalence_test(model, input_ids, attention_mask, continuation)
+            )
+
+            del cached
+            torch.cuda.empty_cache() if input_ids.device.type == "cuda" else None
+
+        sync_device(input_ids.device)
+
+    return {
+        "cached_prefill_median_s": statistics.median(cached_prefill_s),
+        "cached_decode_total_median_s": statistics.median(cached_decode_total_s) if cached_decode_total_s else 0.0,
+        "cached_total_median_s": statistics.median(cached_total_s),
+        "uncached_total_median_s": statistics.median(uncached_total_s),
+        "cached_seq_len_median": statistics.median(seq_lens),
+        "max_incremental_abs_error": max(max_errors) if max_errors else 0.0,
+    }
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model-id", default=os.environ.get("MODEL_ID", "sshleifer/tiny-gpt2"))
+    parser.add_argument(
+        "--prompt",
+        default=os.environ.get(
+            "PROMPT",
+            "KV cache lets autoregressive decoding reuse past keys and values.",
+        ),
+    )
+    parser.add_argument("--new-tokens", type=int, default=int(os.environ.get("NEW_TOKENS", "8")))
+    parser.add_argument("--trials", type=int, default=int(os.environ.get("TRIALS", "5")))
+    args = parser.parse_args()
+
+    model, tok, device = load_model(args.model_id)
+    enc = tok(args.prompt, return_tensors="pt")
+    input_ids = enc["input_ids"].to(device)
+    attention_mask = enc["attention_mask"].to(device)
+
+    validate_inputs(tok, model, input_ids, args.new_tokens, args.trials)
+
+    print(f"prompt_tokens={input_ids.shape[1]}")
+    print(f"new_tokens={args.new_tokens}")
+    print(f"trials={args.trials}")
+
+    summary = benchmark(model, input_ids, attention_mask, args.new_tokens, args.trials)
+    print(summary)
+
+
+if __name__ == "__main__":
+    main()
+```
+
+### What the smoke test verifies
+
+This is a publication-facing equivalence check for a single unpadded sequence:
+
+- feed a fixed continuation token sequence one token at a time
+- pass `past_key_values` for the cached path
+- compare each resulting last-position logit tensor against `use_cache=False` on the identical complete prefix
+- use the full extended attention mask for the cached-history plus current-token path
+- check logits for finiteness
+- compute differences in FP32
+- expose absolute and relative tolerances
+- state tolerances are model- and backend-specific and must be validated for the selected configuration
+- report the maximum observed error for the tested sequence
+
+This minimal example is restricted to one unpadded sequence unless positional handling for padded batches is implemented and tested.
+
+## Production failures come from capacity, identity, and cleanup bugs
+
+1. **Requests start successfully, then out of memory during generation** → prompt-only admission accounting ignored future cache growth → budget prompt plus output allowance, account for block rounding and temporary memory, and define queue or preemption behavior before deployment. A hard context limit is not a concurrency budget.
+
+2. **Available capacity slowly declines after cancellations or speculative workloads** → shared-block references or rejected-token allocations were not released → enforce cleanup on completion, exception, cancellation, and rollback. This is a scale and over-time failure, not something a single-request benchmark reveals.
+
+3. **Good isolated token latency, poor p99 under mixed traffic** → long prefills occupy the GPU while decode requests wait → measure queueing, prefill, and inter-token latency separately; tune chunked prefill and maximum scheduled tokens against the latency SLO.
+
+4. **Wrong answers only after prefix hits, adapter changes, or branching** → cache identity or position bookkeeping does not match the actual computation → use exact token-prefix matching and model- and adapter-aware identities; implement copy-on-write tails and speculative rollback. Compare cached and uncached logits with numerical tolerance on targeted tests.
+
+5. **Long-context quality degrades after a memory optimization** → active history was silently dropped, or cache quantization hurt sensitive tasks → distinguish truncation from lossless eviction; preserve full context through paging, queueing, or restoration when required. Evaluate quantization and truncation separately on long-range retrieval, document QA, and code dependencies.
+
+6. **A smaller quantized or offloaded cache has worse latency** → dequantization, unsupported fast paths, or host-device transfers outweigh the savings → benchmark the actual model and backend at realistic context lengths and concurrency. Reject the optimization if it misses the latency SLO even when the memory chart looks better.
+
+## What most teams get wrong
+
+- **They multiply by attention heads instead of KV heads.** Read `num_key_value_heads`, and confirm the actual cache tensor layout.
+
+- **They report tokens per second without workload dimensions.** Separate prefill latency, TTFT including queueing, inter-token latency, output throughput, and peak allocated memory.
+
+- **They treat prefix caching as necessary for KV caching to help.** Ordinary per-request caching saves repeated work during generation even when every prompt is different.
+
+- **They budget logical payload as if it were all available GPU memory.** Subtract weights, workspaces, graph allocations, and headroom. Do not divide blindly by tensor parallel degree.
+
+- **They fix out of memory by silently shortening context.** First consider admission limits, paging, queueing, output caps, and evaluated lower precision.
+
+<Callout type="warning" title="Do not confuse optimization with semantic change">
+If you drop active history, you are not just making the cache smaller. You are changing what the model can attend to.
+</Callout>
+
+## Use KV cache by default, then budget the cache like a real resource
+
+KV caching should be the default for multi-token serving because it removes repeated work from autoregressive decoding. But the thing you are trading away is memory headroom, and that headroom is consumed by resident tokens, not just request count.
+
+If you only remember one rule, make it this: optimize resident-token capacity alongside compute. Use caching, but admit requests based on how much cache they will occupy over their full lifetime, not on how cheap the prompt looked at the door.
+
+### Decision checklist
+
+Before shipping, answer these questions:
+
+1. Have I budgeted resident tokens, not just request count?
+2. Do I know the actual KV head count, head dimension, and precision?
+3. Have I separated prefill, TTFT, inter-token latency, and throughput in measurement?
+4. Do I have a policy for queueing, preemption, or rejection when the cache fills?
+5. Am I using paging or block-based allocation before resorting to truncation?
+6. If I truncate or window context, have I evaluated the quality loss on long-range tasks?
+7. If I quantize KV, have I checked latency and quality on the real workload?
+8. Have I tested cancellation, branching, and rollback cleanup under load?
