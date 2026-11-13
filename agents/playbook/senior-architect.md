@@ -98,3 +98,19 @@ Score each and list concrete fixes for anything below 9:
 6. **Structure:** thesis up front, paid off at the end; headings carry the argument.
 7. **Code:** runnable, production-shaped, minimal.
 A post with any factual error, invented number, or generic "AI blog" paragraph cannot score 9.
+
+## 9. Honesty and revisions (hard rules)
+
+- **Never claim you ran, tested, benchmarked or measured anything.** No "tested combinations", "in our tests", "we measured",
+  "on our cluster" unless the research notes contain that exact result with a source. Say "should work with", or omit.
+- **Never talk about the post itself.** No "this post", "this revised post", "this article covers", "as requested",
+  "the reviewer", "the brief", "in this section we will". Readers never see the drafting process.
+- **Fix, don't hedge.** When a claim is challenged, correct it, source it, or delete it. Do not keep the claim and bolt on
+  "this is not a prediction / not a measurement / this is an estimate" disclaimers; one clear "ESTIMATE, assuming X" label
+  where the numbers are first introduced is enough.
+- **Versions:** only pin versions that appear in the research notes. Otherwise write `pip install torch transformers` and say
+  which API the code relies on.
+- **Code budget:** one main example, normally 40–90 lines, never above ~120. Cut CLI parsing, logging boilerplate and
+  option matrices that don't teach the point.
+- **Length budget:** 1,500–3,000 words. A revision must not make the post longer unless the reviewer asked for missing content;
+  every added paragraph should replace a weaker one.

@@ -18,7 +18,7 @@ from .roles.head import Head
 from .roles.pm import PM
 from .roles.publisher import Publisher
 from .roles.reviewer import Reviewer
-from .roles.tester import Tester, build_site, remove_files, write_files
+from .roles.tester import Tester, build_site, remove_files, style_issues, write_files
 from .roles.writer import Researcher, Writer
 from .settings import MAX_PARALLEL, MAX_REVIEW_ROUNDS, RUNS_DIR, ROOT
 from .telegram import Telegram, esc
@@ -39,19 +39,30 @@ async def team_pipeline(llm: LLM, post: Post, published: list[dict], tg: Telegra
         await wr.write(post)
         await ed.edit(post)
         await de.design(post)
+        reviser = "reviser" if mode == "senior" else "editor"   # Senior: the strongest model applies the review
+        best = None
         for rnd in range(MAX_REVIEW_ROUNDS + 1):
             r = await rv.review(post)
             problems = await te.static(post)
-            if r["approved"] and not problems:
+            style = style_issues(post)
+            if best is None or r["score"] >= best[0]:
+                best = (r["score"], post.body, dict(post.meta), dict(post.diagrams), len(post.reviews))
+            if r["approved"] and not problems and not style:
                 break
             if rnd == MAX_REVIEW_ROUNDS:
-                post.note("Head", f"review rounds exhausted (score {r.get('score')}); sending to owner with notes")
+                if best[0] > r["score"]:   # revisions made it worse: ship the best-scoring version, not the last one
+                    _, post.body, post.meta, post.diagrams, idx = best
+                    post.final_review = post.reviews[idx - 1]
+                    post.note("Head", f"kept round {idx} version (score {best[0]}) over the final one (score {r['score']})")
+                post.note("Head", f"review rounds exhausted (score {post.review.get('score')}); sending to owner with notes")
                 break
-            await ed.edit(post, (r.get("required_changes") or r.get("issues") or []) + problems)
+            if style:
+                post.note(te.name, f"style issues: {style}")
+            await ed.edit(post, (r.get("required_changes") or r.get("issues") or []) + problems + style, role=reviser)
         if te_problems := await te.static(post):
             raise RuntimeError(f"unfixable: {te_problems}")
         tg.send(f"🧩 {esc(post.team)} finished <b>{esc(post.meta.get('title', post.brief.get('title', '')))}</b> "
-                f"(review {post.reviews[-1].get('score', '?')}/10)")
+                f"(review {post.review.get('score', '?')}/10)")
     except Exception as e:  # noqa: BLE001 - isolate team failures
         post.ok, post.error = False, f"{type(e).__name__}: {e}"
         post.note("Head", f"team failed: {post.error}")
@@ -128,7 +139,10 @@ async def run_write(topic_ids: list[str], *, open_pr: bool = True, build: bool =
     run_file.write_text(json.dumps({
         "run": run_id, "mode": mode, "usage": llm.usage,
         "posts": [{"topic": p.topic["id"], "slug": p.slug, "ok": p.ok, "pr": p.pr, "error": p.error[:300],
-                   "scores": [r.get("score") for r in p.reviews], "log": p.log} for p in posts],
+                   "scores": [r.get("score") for r in p.reviews],
+                   "reviews": [{"score": r.get("score"), "rubric": r.get("rubric"),
+                                "issues": (r.get("required_changes") or r.get("issues") or [])[:10]} for r in p.reviews],
+                   "log": p.log} for p in posts],
     }, indent=2) + "\n")
 
     def finish(t: Tracker):
