@@ -43,6 +43,30 @@ jobs:
           S=$(openssl rand -hex 32)
           echo "::add-mask::$S"
           echo "value=$S" >> "$GITHUB_OUTPUT"
+      - name: Ensure workers.dev subdomain exists
+        if: steps.check.outputs.ready == 'true'
+        id: sub
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          API="https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT}/workers/subdomain"
+          SUB=$(curl -s -H "Authorization: Bearer $CF_TOKEN" "$API" | jq -r '.result.subdomain // empty')
+          if [ -z "$SUB" ]; then
+            for CAND in tinybrains "tinybrains-$(openssl rand -hex 3)" "tinybrains-$(openssl rand -hex 4)"; do
+              RES=$(curl -s -X PUT -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
+                    --data "{\"subdomain\":\"$CAND\"}" "$API")
+              if [ "$(echo "$RES" | jq -r .success)" = "true" ]; then SUB="$CAND"; echo "Registered $SUB.workers.dev"; break; fi
+              echo "Could not register $CAND: $(echo "$RES" | jq -c .errors)"
+            done
+          fi
+          if [ -z "$SUB" ]; then
+            echo "::error::No workers.dev subdomain. Open https://dash.cloudflare.com -> Workers & Pages, accept the free workers.dev subdomain, then re-run."
+            exit 1
+          fi
+          echo "Using $SUB.workers.dev"
+          echo "subdomain=$SUB" >> "$GITHUB_OUTPUT"
       - name: Deploy worker and set its secrets
         if: steps.check.outputs.ready == 'true'
         id: deploy
@@ -54,15 +78,23 @@ jobs:
           S_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
           S_HOOK: ${{ steps.sec.outputs.value }}
           S_PAT: ${{ secrets.BOT_GITHUB_PAT }}
+          SUB: ${{ steps.sub.outputs.subdomain }}
         run: |
-          npx wrangler deploy 2>&1 | tee "$RUNNER_TEMP/deploy.log"
-          URL=$(grep -oE 'https://[a-zA-Z0-9.-]+\.workers\.dev' "$RUNNER_TEMP/deploy.log" | head -1)
-          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          npx wrangler deploy
           jq -n --arg a "$S_TG" --arg b "$S_CHAT" --arg c "$S_HOOK" --arg d "$S_PAT" \
             '{TELEGRAM_BOT_TOKEN:$a, TELEGRAM_CHAT_ID:$b, TELEGRAM_WEBHOOK_SECRET:$c, GITHUB_TOKEN:$d}' \
             > "$RUNNER_TEMP/secrets.json"
           npx wrangler secret bulk "$RUNNER_TEMP/secrets.json"
           rm -f "$RUNNER_TEMP/secrets.json"
+          NAME=$(grep -E '^name *=' wrangler.toml | sed -E 's/^name *= *"([^"]+)".*/\1/')
+          URL="https://${NAME}.${SUB}.workers.dev"
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          # wait until the new worker answers (workers.dev routes can take a few seconds)
+          for i in $(seq 1 12); do
+            if curl -sf "$URL" | grep -q "tinybrains bot ok"; then echo "Worker live at $URL"; break; fi
+            sleep 5
+          done
       - name: Register Telegram webhook
         if: steps.check.outputs.ready == 'true'
         env:
@@ -70,7 +102,7 @@ jobs:
           SECRET: ${{ steps.sec.outputs.value }}
           URL: ${{ steps.deploy.outputs.url }}
         run: |
-          if [ -z "$URL" ]; then echo "::error::No worker URL. In Cloudflare dashboard open Workers & Pages once to create your workers.dev subdomain, then re-run."; exit 1; fi
+          set -euo pipefail
           RES=$(curl -s "https://api.telegram.org/bot${TOKEN}/setWebhook" \
             --data-urlencode "url=${URL%/}/telegram" \
             --data-urlencode "secret_token=${SECRET}" \
