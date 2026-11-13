@@ -208,7 +208,7 @@ class TestHelpers(unittest.TestCase):
         asyncio.run(client.chat("architect", "s", "u"))
         asyncio.run(client.chat("router", "s", "u"))
         self.assertEqual(self.calls, [("azure", "gpt-mini"), ("azure", "gpt-big"), ("azure", "gpt-big"),
-                                      ("free", ("google/gemma-4-26b-a4b-it:free", "google/gemma-4-31b-it:free"))])
+                                      ("free", ("google/gemma-4-26b-a4b-it:free", "google/gemma-4-31b-it:free", "baidu/ernie-5.5-flash-preview:free"))])
 
     def test_mini_mode_reviewer_stays_free(self):
         client = self._client(self._Ap(mode="mini"))
