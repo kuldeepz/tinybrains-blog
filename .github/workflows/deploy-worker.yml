@@ -67,6 +67,24 @@ jobs:
           fi
           echo "Using $SUB.workers.dev"
           echo "subdomain=$SUB" >> "$GITHUB_OUTPUT"
+      - name: Ensure KV namespace for approvals
+        if: steps.check.outputs.ready == 'true'
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          API="https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT}/storage/kv/namespaces"
+          TITLE="tinybrains-approvals"
+          ID=$(curl -s -H "Authorization: Bearer $CF_TOKEN" "$API?per_page=100" | jq -r --arg t "$TITLE" '.result[]? | select(.title==$t) | .id' | head -1)
+          if [ -z "$ID" ]; then
+            ID=$(curl -s -X POST -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
+                 --data "{\"title\":\"$TITLE\"}" "$API" | jq -r '.result.id // empty')
+            echo "Created KV namespace $TITLE"
+          fi
+          [ -n "$ID" ] || { echo "::error::Could not create KV namespace (token needs Workers KV Storage: Edit)"; exit 1; }
+          sed -i "s/__APPROVALS_KV_ID__/$ID/" bot/worker/wrangler.toml
+          echo "KV namespace ready"
       - name: Deploy worker and set its secrets
         if: steps.check.outputs.ready == 'true'
         id: deploy

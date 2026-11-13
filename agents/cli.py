@@ -21,7 +21,7 @@ import sys
 from . import gitops
 from .drive import Drive
 from .intake import describe, notify_unsupported, route, summarize_upload
-from .llm import LLM
+from .llm import make_llm
 from .orchestrator import run_write
 from .roles.head import Head
 from .settings import SITE_URL, env
@@ -56,7 +56,7 @@ def fmt_added(added) -> str:
 async def write_from_text(text: str, tg: Telegram) -> None:
     ids = [w.upper() for w in re.split(r"[\s,]+", text.strip()) if ID_RE.match(w)]
     if not ids:
-        topics = await Head(LLM()).split(text)
+        topics = await Head(make_llm()).split(text)
         if not topics:
             tg.send("I couldn't find a topic in that. Try /write <topic>.")
             return
@@ -80,7 +80,7 @@ async def handle_event(payload: dict) -> None:
         data, fname = tg.download(f["id"])
         name = f.get("name") or fname
         mime = f.get("mime") or mimetypes.guess_type(name)[0] or ""
-        llm = LLM()
+        llm = make_llm()
         content = await describe(llm, name, data, mime)
         if not content.strip():
             notify_unsupported(tg, name)
@@ -102,7 +102,7 @@ async def handle_event(payload: dict) -> None:
         return
 
     # free text
-    llm = LLM()
+    llm = make_llm()
     r = await route(llm, text)
     if r["intent"] == "store_idea" and r["topics"]:
         tg.send(fmt_added(add_ideas(r["topics"], "telegram")))

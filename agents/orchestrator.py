@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from . import gitops
 from .drive import Drive
 from .intake import load_private_context
-from .llm import LLM, gather_limited
+from .llm import LLM, gather_limited, make_llm
 from .roles.base import Post
 from .roles.designer import Designer
 from .roles.editor import Editor
@@ -56,7 +56,7 @@ async def team_pipeline(llm: LLM, post: Post, published: list[dict], tg: Telegra
 
 
 async def run_write(topic_ids: list[str], *, open_pr: bool = True, build: bool = True) -> list[Post]:
-    llm, tg, drive = LLM(), Telegram(), Drive()
+    llm, tg, drive = make_llm(), Telegram(), Drive()
     head = Head(llm)
 
     def start(t: Tracker):
