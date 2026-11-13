@@ -265,5 +265,51 @@ class TestHelpers(unittest.TestCase):
         self.assertEqual(llm_mod.parse_json('sure! {"a": 2} hope that helps'), {"a": 2})
 
 
+class _Msg:
+    def __init__(self, content): self.content = content
+class _Choice:
+    def __init__(self, content, finish): self.message = _Msg(content); self.finish_reason = finish
+class _Resp:
+    def __init__(self, content, finish="stop"): self.choices = [_Choice(content, finish)]; self.usage = None
+
+
+class TestAzureReasoning(unittest.TestCase):
+    def _llm(self, responses):
+        calls = []
+        async def create(**kw):
+            calls.append(dict(kw))
+            r = responses.pop(0)
+            if isinstance(r, Exception):
+                raise r
+            return r
+        llm = llm_mod.LLM.__new__(llm_mod.LLM)
+        llm.usage = {"calls": 0, "paid_calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "models": {}}
+        llm._az = mock.Mock()
+        llm._az.chat.completions.create = create
+        return llm, calls
+
+    def test_architect_and_reviewer_have_reasoning_budget(self):
+        a, r = llm_mod.load_role("architect"), llm_mod.load_role("reviewer")
+        self.assertEqual(a.reasoning_effort, "high"); self.assertGreaterEqual(a.max_tokens, 32000)
+        self.assertEqual(r.reasoning_effort, "medium"); self.assertGreaterEqual(r.max_tokens, 20000)
+        self.assertIsNone(llm_mod.load_role("writer").reasoning_effort)
+
+    def test_reasoning_effort_sent_and_dropped_if_rejected(self):
+        llm, calls = self._llm([Exception("Unsupported parameter: reasoning_effort"), _Resp("ok")])
+        with mock.patch.dict(os.environ, {"AZURE_OPENAI_DEPLOYMENT": "mini", "AZURE_OPENAI_DEPLOYMENT_ARCHITECT": "sol"}):
+            out = asyncio.run(llm._call_azure(llm_mod.load_role("architect"), [], False))
+        self.assertEqual(out, "ok")
+        self.assertEqual(calls[0]["reasoning_effort"], "high"); self.assertEqual(calls[0]["model"], "sol")
+        self.assertNotIn("reasoning_effort", calls[1])
+
+    def test_budget_exhausted_by_thinking_retries_bigger(self):
+        llm, calls = self._llm([_Resp("", "length"), _Resp("", "length"), _Resp("brief")])
+        with mock.patch.dict(os.environ, {"AZURE_OPENAI_DEPLOYMENT": "mini"}):
+            out = asyncio.run(llm._call_azure(llm_mod.load_role("architect"), [], False))
+        self.assertEqual(out, "brief")
+        self.assertEqual([c["max_completion_tokens"] for c in calls], [32000, 64000, 100000])
+        self.assertEqual(calls[2]["reasoning_effort"], "medium")
+
+
 if __name__ == "__main__":
     unittest.main()

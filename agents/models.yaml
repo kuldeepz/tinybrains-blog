@@ -4,6 +4,7 @@
 #            mini      -> AZURE_OPENAI_DEPLOYMENT            (e.g. your gpt-5-mini deployment)
 #            architect -> AZURE_OPENAI_DEPLOYMENT_ARCHITECT  (your strongest model; falls back to mini)
 #            small     -> AZURE_OPENAI_DEPLOYMENT_SMALL      (falls back to mini)
+#   reasoning_effort: low|medium|high, sent to Azure reasoning models only (ignored if unsupported).
 #   prefer_paid: in Senior/Mini mode use Azure first (free models become the fallback).
 # Every /write asks you in Telegram: 🏛 Senior / 💡 Mini / 🆓 Free. Nothing on Azure runs without your tap.
 # Overrides (GitHub repo Variables): MODEL_<ROLE>_FREE="a:free,b:free"   MODEL_<ROLE>_AZURE="mini|architect|small"
@@ -15,7 +16,8 @@ roles:
     free: []
     azure: architect
     prefer_paid: true
-    max_tokens: 12000
+    max_tokens: 32000    # room for hidden reasoning (e.g. GPT-6.1 Sol) + the brief itself
+    reasoning_effort: high
   head:
     free: [baidu/ernie-5.5-flash-preview:free, nvidia/nemotron-3.5-super-vl:free]
     azure: small
@@ -49,6 +51,8 @@ roles:
     azure: architect
     prefer_paid_in: [senior]
     temperature: 0.1
+    max_tokens: 20000    # reasoning + rubric JSON
+    reasoning_effort: medium
   tester:
     free: [google/gemma-4-26b-a4b-it:free, google/gemma-4-31b-it:free]
     azure: small

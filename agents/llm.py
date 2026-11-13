@@ -29,6 +29,7 @@ class RoleConfig:
     temperature: float = 0.4
     max_tokens: int = 8000
     web: bool = False
+    reasoning_effort: str | None = None  # Azure reasoning models only (low|medium|high); hidden thinking counts toward max_tokens
 
 
 AZURE_TIERS = {
@@ -83,7 +84,7 @@ class LLM:
             self._az = AsyncAzureOpenAI(
                 azure_endpoint=env("AZURE_OPENAI_ENDPOINT"),
                 api_key=env("AZURE_OPENAI_API_KEY"),
-                api_version=env("AZURE_OPENAI_API_VERSION", "2024-10-21"),
+                api_version=env("AZURE_OPENAI_API_VERSION", "2025-04-01-preview"),
                 timeout=600,
                 max_retries=1,
             )
@@ -170,17 +171,39 @@ class LLM:
         kwargs: dict[str, Any] = dict(model=dep, messages=messages, max_completion_tokens=rc.max_tokens)
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
-        resp = await self._az.chat.completions.create(**kwargs)
+        if rc.reasoning_effort:
+            kwargs["reasoning_effort"] = rc.reasoning_effort
+        for attempt in range(3):
+            try:
+                resp = await self._az.chat.completions.create(**kwargs)
+            except Exception as e:  # older API versions / non-reasoning deployments reject reasoning_effort
+                if "reasoning_effort" in kwargs and "reasoning_effort" in str(e):
+                    kwargs.pop("reasoning_effort")
+                    continue
+                raise
+            choice = resp.choices[0] if resp.choices else None
+            truncated = choice is not None and choice.finish_reason == "length" and not (choice.message.content or "").strip()
+            if truncated and attempt < 2:
+                # A reasoning model spent the whole budget thinking: give it more room once, then think less.
+                self._content_usage(resp)
+                kwargs["max_completion_tokens"] = min(kwargs["max_completion_tokens"] * 2, 100000)
+                if attempt == 1 and kwargs.get("reasoning_effort") == "high":
+                    kwargs["reasoning_effort"] = "medium"
+                continue
+            break
         out = self._content(resp)
         self.usage["paid_calls"] += 1
         self.usage["models"][f"azure:{dep}"] = self.usage["models"].get(f"azure:{dep}", 0) + 1
         return out
 
-    def _content(self, resp) -> str:
+    def _content_usage(self, resp) -> None:
         self.usage["calls"] += 1
         if getattr(resp, "usage", None):
             self.usage["prompt_tokens"] += resp.usage.prompt_tokens or 0
             self.usage["completion_tokens"] += resp.usage.completion_tokens or 0
+
+    def _content(self, resp) -> str:
+        self._content_usage(resp)
         if not resp.choices or not resp.choices[0].message.content:
             raise LLMError("empty completion")
         return resp.choices[0].message.content
