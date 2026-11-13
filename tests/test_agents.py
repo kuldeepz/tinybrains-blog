@@ -37,6 +37,7 @@ class FakeLLM:
         self.usage = {"calls": 0}
         self.active = 0
         self.max_active = 0
+        self.version = 0
 
     async def _tick(self):
         self.usage["calls"] += 1
@@ -53,6 +54,9 @@ class FakeLLM:
         if role == "researcher":
             return {"notes": "facts", "sources": [{"title": "Docs", "url": "https://example.com"}]}
         if role == "reviewer":
+            if getattr(self, "scores", None):
+                sc = self.scores.pop(0)
+                return {"approved": sc >= 9, "score": sc, "required_changes": [f"fix {sc}"], "body_seen": self.version}
             return {"approved": True, "score": 9, "issues": []}
         if role == "router":
             return {"intent": "store_idea", "topics": [{"title": "x"}]}
@@ -61,9 +65,13 @@ class FakeLLM:
     async def chat(self, role, system, user, json_mode=False):
         await self._tick()
         self.roles_called.append(role)
+        if role in ("editor", "reviser"):
+            self.version += 1
+            return ('<meta>{"title": "T", "description": "D", "tldr": "TL", "takeaways": ["a"], "tags": ["agents"]}</meta><body>'
+                    + BODY + f"\n\nversion {self.version}\n</body>")
         if role == "architect":
             return "## Thesis\nX"
-        if role == "editor":
+        if role in ("editor", "reviser"):
             return '<meta>{"title": "T", "description": "D", "tldr": "TL", "takeaways": ["a"], "tags": ["agents"]}</meta><body>' + BODY + "</body>"
         if role == "designer":
             return "<body>" + BODY + "</body><diagram></diagram>"
@@ -309,6 +317,57 @@ class TestAzureReasoning(unittest.TestCase):
         self.assertEqual(out, "brief")
         self.assertEqual([c["max_completion_tokens"] for c in calls], [32000, 64000, 100000])
         self.assertEqual(calls[2]["reasoning_effort"], "medium")
+
+
+class TestRevisionLoop(unittest.TestCase):
+    def setUp(self):
+        shutil.rmtree(TMP, ignore_errors=True)
+        (TMP / "ops").mkdir(parents=True)
+
+    def _run(self, scores, mode):
+        add_ideas([{"title": "kv cache"}], "cli")
+
+        class A:
+            async def choose_mode(self, titles, azure_ready):
+                return mode
+        A.mode = mode
+        fake = FakeLLM(approver=A())
+        fake.scores = list(scores)
+        with mock.patch.object(orchestrator, "make_llm", return_value=fake):
+            posts = asyncio.run(orchestrator.run_write(["T001"], open_pr=False, build=False))
+        return posts[0], fake
+
+    def test_keeps_best_version_when_revisions_get_worse(self):
+        post, fake = self._run([7, 8, 6], "senior")
+        self.assertTrue(post.ok, post.error)
+        self.assertEqual(post.review["score"], 8)
+        self.assertIn("version 2", post.body)          # round-2 body (scored 8), not the final round-3 body
+        self.assertEqual(fake.roles_called.count("reviser"), 2, "senior revisions use the strongest model")
+        run = json.loads(next((TMP / "ops" / "runs").glob("*.json")).read_text())
+        self.assertEqual([r["score"] for r in run["posts"][0]["reviews"]], [7, 8, 6])
+        self.assertEqual(run["posts"][0]["reviews"][0]["issues"], ["fix 7"])
+
+    def test_mini_mode_revises_with_editor(self):
+        post, fake = self._run([7, 9], "mini")
+        self.assertNotIn("reviser", fake.roles_called)
+        self.assertEqual(post.review["score"], 9)
+
+    def test_style_issues_catch_meta_talk_and_bloat(self):
+        from agents.roles.base import Post
+        from agents.roles.tester import style_issues
+        p = Post(topic={"id": "T1"}, body="Intro.\n\n```python\n" + "x = 1\n" * 150 + "```\n" + "word " * 3400,
+                 meta={"tldr": "This revised post explains caching.", "takeaways": ["Tested combinations: gpt2"]})
+        issues = " | ".join(style_issues(p))
+        self.assertIn("this revised post", issues)
+        self.assertIn("tested combinations", issues)
+        self.assertIn("code block is 150 lines", issues)
+        self.assertIn("words", issues)
+        self.assertEqual(style_issues(Post(topic={}, body="Plain senior prose about caching.", meta={"tldr": "KV cache trades memory for compute."})), [])
+
+    def test_reviser_role_uses_architect_tier(self):
+        rc = llm_mod.load_role("reviser")
+        self.assertEqual(rc.azure, "architect")
+        self.assertTrue(rc.prefer_paid)
 
 
 if __name__ == "__main__":

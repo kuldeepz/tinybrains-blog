@@ -57,9 +57,9 @@ const statusPrefix = d.updated ? 'Updated' : 'Published';
         <div class="meta-row">
           <a class="tag" href={archiveHref({ topic: d.topic })}>{d.topic}</a>
           <span>{d.type}</span>
-          <span>{post.readMin} min · {post.tokensLabel} tokens</span>
+          <span>{post.readMin} min read</span>
           <span class="upd"><span class="dot"></span>{statusPrefix} <time data-rel datetime={statusDate.toISOString()}>{relDays(statusDate)}</time></span>
-          <span class="tag ver" title={`Version ${d.version}`}>v{d.version}</span>
+          {d.version > 1 && <span class="tag ver" title={`Revision ${d.version}`}>rev {d.version}</span>}
         </div>
         <h1>{d.title}</h1>
         <p class="dek">{d.description}</p>

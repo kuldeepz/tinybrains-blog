@@ -5,12 +5,12 @@ import { getPosts, allTopics, fmtK } from '../lib/posts';
 
 const posts = await getPosts();
 const usedTopics = allTopics(posts).filter((t) => posts.some((p) => p.data.topic === t));
-const tokens = posts.reduce((s, p) => s + p.tokens, 0);
+const totalWords = posts.reduce((s, p) => s + p.words, 0);
 const words = SITE.mission.split(' ');
 const stats = [
   { v: String(posts.length), l: 'Articles published' },
   { v: String(usedTopics.length), l: 'Topics covered' },
-  { v: '~' + fmtK(tokens), l: 'Tokens written', grad: true },
+  { v: '~' + fmtK(totalWords), l: 'Words written', grad: true },
 ];
 ---
 <Base title="About" description={SITE.mission} current="about">

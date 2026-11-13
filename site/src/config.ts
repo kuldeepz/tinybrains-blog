@@ -6,7 +6,7 @@ export const SITE = {
   name: 'tinybrains.ai',
   tagline: 'AI engineering, in practice',
   description:
-    'Hands-on guides to LLMs, agents and RAG — with runnable code, real benchmarks and exact numbers.',
+    'Hands-on guides to LLMs, agents and RAG — with runnable code, honest trade-offs and the numbers that matter.',
   /** Canonical public URL of the deployed site (including the GitHub Pages base path). */
   url: 'https://kuldeepz.github.io/tinybrains-blog',
   lang: 'en',

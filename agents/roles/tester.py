@@ -64,6 +64,28 @@ def check_post(post: Post) -> list[str]:
     return problems
 
 
+META_TALK = re.compile(
+    r"\b(this (revised )?(post|article|piece|draft)|revised (post|version|draft)|the reviewer|review(er)? (feedback|notes)|"
+    r"architect brief|as requested|tested combinations?|we (tested|benchmarked|measured)|in our (tests|benchmarks))\b",
+    re.I)
+
+
+def style_issues(post: Post) -> list[str]:
+    """Deterministic checks for the failure modes of LLM revisions. Advisory: fed to the reviser, never blocks publishing."""
+    issues = []
+    words = len(post.body.split())
+    if words > 3300:
+        issues.append(f"post is {words} words; cut to under 3,000 by removing the weakest material, not by summarising everything")
+    for block in re.findall(r"```[^\n]*\n(.*?)```", post.body, re.S):
+        n = block.count("\n")
+        if n > 120:
+            issues.append(f"a code block is {n} lines; cut it to under ~90 lines that teach the point (drop CLI/option plumbing)")
+    texts = [post.body] + [str(post.meta.get(k, "")) for k in ("title", "description", "tldr")] + [str(t) for t in post.meta.get("takeaways") or []]
+    for hit in sorted({m.group(0).lower() for t in texts for m in META_TALK.finditer(t)}):
+        issues.append(f'remove drafting/meta talk or unverifiable testing claim: "{hit}"')
+    return issues
+
+
 def frontmatter(post: Post) -> str:
     b, m = post.brief, post.meta
     fm = {

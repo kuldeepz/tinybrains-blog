@@ -60,6 +60,11 @@ class Post:
     error: str = ""
     pr: int | None = None
     pr_url: str = ""
+    final_review: dict[str, Any] | None = None  # the review of the version being shipped (best round, not always the last)
+
+    @property
+    def review(self) -> dict[str, Any]:
+        return self.final_review or (self.reviews[-1] if self.reviews else {})
 
     def note(self, agent: str, msg: str) -> None:
         line = f"[{self.team}/{agent}] {msg}"

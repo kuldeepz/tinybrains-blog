@@ -13,7 +13,7 @@ export interface PostView {
   readMin: number;
   tokens: number;
   tokensLabel: string; // "~3.4k"
-  meta: string; // "14 min · ~3.4k tokens"
+  meta: string; // "14 min read"
   dateLabel: string; // "13 Nov 2026"
   shortDate: string; // "13 Nov"
   coverSrc?: string;
@@ -96,7 +96,7 @@ export async function getPosts(): Promise<PostView[]> {
       readMin,
       tokens,
       tokensLabel,
-      meta: `${readMin} min · ${tokensLabel} tokens`,
+      meta: `${readMin} min read`,
       dateLabel: fmtDate(p.data.date),
       shortDate: fmtDate(p.data.date).slice(0, 6),
       coverSrc: p.data.cover ? url(p.data.cover) : undefined,

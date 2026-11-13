@@ -41,6 +41,12 @@ roles:
     azure: mini
     prefer_paid: true
     max_tokens: 16000
+  reviser:               # applies review feedback. Senior: the strongest model revises (that's where quality is won).
+    free: [nvidia/nemotron-3-ultra-550b-a55b:free, baidu/ernie-5.5-flash-preview:free]
+    azure: architect
+    prefer_paid: true
+    max_tokens: 32000
+    reasoning_effort: medium
   designer:
     free: [baidu/ernie-5.5-flash-preview:free, nvidia/nemotron-3-ultra-550b-a55b:free]
     azure: mini

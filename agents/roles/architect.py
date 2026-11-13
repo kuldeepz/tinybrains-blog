@@ -39,6 +39,9 @@ What the main code example must demonstrate, language, and production concerns i
 ## Do not say
 Claims, clichés or outdated advice the writer must avoid for this topic.
 
+Keep the whole brief under 1,200 words: decisions and substance, not prose. The post itself must land at 1,500-3,000 words
+with one code example of at most ~90 lines, so plan for that budget and leave things out deliberately.
+
 Follow this playbook:
 {PLAYBOOK}"""
         post.architect_brief = await self.llm.chat(self.role, "You are a principal architect writing a brief for a writer.", user)

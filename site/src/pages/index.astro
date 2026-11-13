@@ -125,7 +125,7 @@ const LANG: Record<string, string> = { py: 'Python', python: 'Python', ts: 'Type
         <div class="txt">
           <div class="meta-row">
             <span class="tag">{featured.data.topic}</span>
-            <span class="tag plain">{featured.data.type} · v{featured.data.version}</span>
+            <span class="tag plain">{featured.data.type}</span>
             <span class="upd"><span class="dot"></span>{featured.data.updated ? 'Updated' : 'Published'} <time data-rel datetime={(featured.data.updated ?? featured.data.date).toISOString()}>{relDays(featured.data.updated ?? featured.data.date)}</time></span>
           </div>
           <h2>{featured.data.title}</h2>
