@@ -46,48 +46,54 @@ ops/topics.json        topic tracker (public: titles + status only)
 tests/                 offline tests (fake LLM, no keys needed)
 ```
 
-## One-time setup
+## One-time setup (browser only — nothing runs on your computer)
 
-### 1. Telegram bot
-1. In Telegram, message **@BotFather**, send `/newbot`, and copy the **bot token**.
-2. Send any message to your new bot, then open `https://api.telegram.org/bot<TOKEN>/getUpdates` and copy `message.chat.id`. That's your **chat ID**. The bot only ever responds to this chat.
+Where things run: the **Telegram bot** runs on Cloudflare Workers; the **agent teams and the site build** run on GitHub Actions; the **site** is served by GitHub Pages. All secrets go in **GitHub → repo → Settings → Secrets and variables → Actions → New repository secret**.
 
-### 2. LLM keys
-- **OpenRouter:** create a key at openrouter.ai/keys.
-- **Azure OpenAI (fallback):** endpoint `https://<resource>.openai.azure.com`, key, and a deployment name (optionally a second, cheaper deployment for small roles).
+### Step 1 — Telegram (≈3 min)
+1. In Telegram open **@BotFather** → `/newbot` → pick a name → copy the token → secret **`TELEGRAM_BOT_TOKEN`**.
+2. Open **@userinfobot** → it replies with your numeric id → secret **`TELEGRAM_CHAT_ID`**. (The bot answers only this id.)
 
-### 3. Google Drive (private storage)
-Service account route (recommended, needs a **Shared Drive**, because service accounts have no My-Drive storage quota):
-1. Google Cloud console → new project → enable **Google Drive API**.
-2. IAM → Service accounts → create → Keys → add JSON key.
-3. Create a folder inside a Shared Drive, add the service account email as **Content manager**, and copy the folder ID from its URL.
+### Step 2 — LLM keys (≈5 min)
+1. openrouter.ai → Keys → Create, and add credit → secret **`OPENROUTER_API_KEY`**.
+2. Azure portal → your Azure OpenAI resource → Keys and Endpoint:
+   - secret **`AZURE_OPENAI_ENDPOINT`** (e.g. `https://myres.openai.azure.com`)
+   - secret **`AZURE_OPENAI_API_KEY`**
+   - **Variables** tab → **`AZURE_OPENAI_DEPLOYMENT`** = your model deployment name (optionally `AZURE_OPENAI_DEPLOYMENT_SMALL` for a cheaper one)
 
-Personal My Drive instead? Use an OAuth client and refresh token: set `GDRIVE_CLIENT_ID`, `GDRIVE_CLIENT_SECRET` and `GDRIVE_REFRESH_TOKEN` instead of `GDRIVE_SA_JSON`.
+### Step 3 — GitHub token for the bot (≈2 min)
+github.com → Settings → Developer settings → **Fine-grained tokens** → Generate:
+- Repository access: **Only select repositories → tinybrains-blog**
+- Permissions: **Contents: Read and write**, **Pull requests: Read and write** (Metadata read is automatic)
+- Copy → secret **`BOT_GITHUB_PAT`** (GitHub doesn't allow secret names starting with `GITHUB_`)
 
-### 4. GitHub secrets & variables (repo → Settings → Secrets and variables → Actions)
-Secrets: `OPENROUTER_API_KEY`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `GDRIVE_FOLDER_ID`, `GDRIVE_SA_JSON` (paste the whole JSON).
-Variables: `AZURE_OPENAI_DEPLOYMENT`, optional `AZURE_OPENAI_DEPLOYMENT_SMALL`, `AZURE_OPENAI_API_VERSION`, `TB_MAX_PARALLEL`.
+### Step 4 — Cloudflare (≈4 min)
+1. dash.cloudflare.com → sign up / log in (the free plan is enough).
+2. Open **Workers & Pages** once and accept the free **workers.dev subdomain** it offers.
+3. Copy your **Account ID** (right sidebar on Workers & Pages) → secret **`CLOUDFLARE_ACCOUNT_ID`**.
+4. My Profile → **API Tokens** → Create Token → template **"Edit Cloudflare Workers"** → Continue → Create → secret **`CLOUDFLARE_API_TOKEN`**.
 
-Or from a terminal:
-```bash
-gh secret set OPENROUTER_API_KEY -R kuldeepz/tinybrains-blog
-```
+### Step 5 — Google Drive for private data (≈8 min), pick ONE
+**A. You have Google Workspace (Shared Drives available)**: service account
+1. console.cloud.google.com → new project → APIs & Services → **Enable "Google Drive API"**.
+2. IAM & Admin → Service Accounts → Create → Keys → Add key → JSON (downloads a file; open it, copy all text) → secret **`GDRIVE_SA_JSON`**.
+3. In Drive create a **Shared Drive** → a folder inside it → Share it with the service account email as **Content manager** → copy the folder id from the URL (`…/folders/<THIS>`) → secret **`GDRIVE_FOLDER_ID`**.
 
-### 5. Cloudflare Worker
-Create a fine-grained GitHub token: repo **tinybrains-blog only**, with permissions Contents: read/write, Pull requests: read/write, and Metadata: read. Then:
-```bash
-cd bot/worker && npm install && npx wrangler login
-```
-```bash
-npx wrangler secret put TELEGRAM_BOT_TOKEN && npx wrangler secret put TELEGRAM_CHAT_ID && npx wrangler secret put TELEGRAM_WEBHOOK_SECRET && npx wrangler secret put GITHUB_TOKEN
-```
-```bash
-npx wrangler deploy
-```
-Point Telegram at the worker (use the same random string you stored as `TELEGRAM_WEBHOOK_SECRET`):
-```bash
-curl "https://api.telegram.org/bot<TOKEN>/setWebhook" -d "url=https://tinybrains-bot.<your-subdomain>.workers.dev/telegram" -d "secret_token=<WEBHOOK_SECRET>" -d 'allowed_updates=["message","callback_query"]'
-```
+**B. Personal Gmail / My Drive**: OAuth refresh token (all in the browser)
+1. console.cloud.google.com → new project → **Enable "Google Drive API"** → OAuth consent screen (External, add yourself as test user) → Credentials → Create **OAuth client ID** → type *Web application* → Authorized redirect URI `https://developers.google.com/oauthplayground` → copy id/secret → secrets **`GDRIVE_CLIENT_ID`**, **`GDRIVE_CLIENT_SECRET`**.
+2. Open developers.google.com/oauthplayground → ⚙️ → "Use your own OAuth credentials" (paste id/secret) → scope `https://www.googleapis.com/auth/drive` → Authorize → Exchange code → copy **Refresh token** → secret **`GDRIVE_REFRESH_TOKEN`**. (Publish the consent screen to "In production", otherwise the token expires after 7 days.)
+3. Create a folder in My Drive → copy its id from the URL → secret **`GDRIVE_FOLDER_ID`**.
+
+### Step 6 — Turn it on (≈1 min)
+GitHub → **Actions** → **"Deploy Telegram bot (Cloudflare Worker)"** → **Run workflow**.
+It deploys the Worker, stores its secrets in Cloudflare, generates the webhook secret and registers the webhook with Telegram. Your bot then messages you *"tinybrains bot deployed"*. Send `/help`.
+
+### Step 7 — First test
+1. `/idea Speculative decoding explained`: the reply includes T001, and `ops/topics.json` gets a commit. No post is written.
+2. `/write T001`: watch **Actions → Agents**. After about 5–15 min a draft arrives in Telegram with ✅/❌.
+3. Tap ✅: the post appears on the site about 2 minutes later.
+
+Optional tuning (Variables tab): `TB_MAX_PARALLEL` (default 4 teams at once), and `MODEL_WRITER`, `MODEL_REVIEWER`, … to override `agents/models.yaml`.
 
 ## Privacy
 - Chat text and uploads are **never committed**. The workflow reads the Telegram payload from `$GITHUB_EVENT_PATH` and never echoes it or puts it in `env:` (env blocks show up in public Actions logs).
@@ -95,7 +101,7 @@ curl "https://api.telegram.org/bot<TOKEN>/setWebhook" -d "url=https://tinybrains
 - A topic's uploads are deleted when its PR is merged or closed. Conversation logs older than `TB_CONV_RETENTION_DAYS` (default 7) are purged every week.
 - **Public:** idea titles and statuses in `ops/topics.json`, and the posts themselves. Don't put anything personal in an idea title.
 
-## Local development
+## Local development (optional, for code changes only)
 ```bash
 cd site && npm install && npm run dev
 ```
