@@ -16,11 +16,13 @@ Return JSON: {{"topics": [{{"title": "short working title", "notes": "any specif
         return [t for t in r.get("topics", []) if t.get("title")][:10]
 
     @staticmethod
-    def team_plan(n: int, max_parallel: int) -> str:
+    def team_plan(n: int, max_parallel: int, mode: str = "free") -> str:
+        chain = "PM → Researcher → " + ("Architect → " if mode == "senior" else "") + \
+                "Writer → Editor → Designer → Reviewer ⇄ Editor → Tester → Publisher"
         if n == 1:
-            return "1 topic → lean team: PM → Researcher → Writer → Editor → Designer → Reviewer → Tester → Publisher"
-        return (f"{n} topics → {n} parallel teams (max {max_parallel} at once), each with its own "
-                f"PM/Researcher/Writer/Editor/Designer/Reviewer; shared Tester build + Publisher")
+            return f"1 topic → lean team: {chain}"
+        return (f"{n} topics → {n} parallel teams (max {max_parallel} at once), each: {chain.rsplit(' → Tester', 1)[0]}; "
+                "shared Tester build + Publisher")
 
     async def chat(self, text: str, status: str) -> str:
         return await self.llm.chat(self.role, f"You are the friendly editor-in-chief bot of tinybrains.ai. Be brief (max 5 sentences).\n{HOUSE_STYLE}",

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 
-from .base import HOUSE_STYLE, MDX_RULES, Agent, Post
+from .base import HOUSE_STYLE, MDX_RULES, PLAYBOOK, Agent, Post
 
 
 class Researcher(Agent):
@@ -28,8 +28,11 @@ class Writer(Agent):
     role = "writer"
 
     async def write(self, post: Post) -> None:
+        arch = (f"ARCHITECT BRIEF (from a principal architect - it defines the substance; execute every section of it "
+                f"faithfully, keep its thesis, insights, numbers labels, failure modes and trade-offs):\n{post.architect_brief}\n\n"
+                if post.architect_brief else "")
         user = f"""Write the full post.
-Brief: {json.dumps(post.brief, ensure_ascii=False)}
+{arch}Brief: {json.dumps(post.brief, ensure_ascii=False)}
 Research notes:
 {post.research[:20000]}
 Sources (cite inline as links where relevant): {json.dumps(post.sources)}
@@ -37,7 +40,8 @@ Owner-provided material: {post.context[:15000] or '-'}
 
 {MDX_RULES}
 Hit roughly {post.brief.get('target_words', 1800)} words. Return ONLY the MDX body."""
-        body = await self.llm.chat(self.role, f"You are a senior AI engineer who writes for tinybrains.ai.\n{HOUSE_STYLE}", user)
+        system = f"You are a principal AI engineer who writes for tinybrains.ai.\n{HOUSE_STYLE}\n\n# Writing playbook (follow strictly)\n{PLAYBOOK}"
+        body = await self.llm.chat(self.role, system, user)
         post.body = strip_fences(body)
         post.note(self.name, f"draft written ({len(post.body.split())} words)")
 

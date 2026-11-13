@@ -73,3 +73,10 @@ test("paid approval ignored from other users", async () => {
   await post({ callback_query: { id: "q", data: "paid:run-x:yes", from: { id: 7 }, message: { message_id: 5, chat: { id: 7 } } } });
   assert.equal(kv.get("run-x"), undefined);
 });
+
+test("mode buttons store senior/mini/free once", async () => {
+  const key = "run-9-1-mode";
+  await post({ callback_query: { id: "q", data: `paid:${key}:senior`, from: { id: 42 }, message: { message_id: 5, chat: { id: 42 } } } });
+  await post({ callback_query: { id: "q", data: `paid:${key}:free`, from: { id: 42 }, message: { message_id: 5, chat: { id: 42 } } } });
+  assert.equal(kv.get(key), "senior");
+});

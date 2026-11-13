@@ -8,6 +8,10 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ..llm import LLM
+from ..settings import ROOT
+
+PLAYBOOK_FILE = ROOT / "agents" / "playbook" / "senior-architect.md"
+PLAYBOOK = PLAYBOOK_FILE.read_text() if PLAYBOOK_FILE.exists() else ""
 
 HOUSE_STYLE = """tinybrains.ai is an AI-engineering blog for practitioners ("AI engineering, in practice").
 Voice: clear, concrete, opinionated where justified, zero hype, no filler, no "In today's fast-paced world".
@@ -42,6 +46,7 @@ class Post:
     team: str = ""                             # e.g. "team-2"
     context: str = ""                          # private source material (from uploads); never written to repo
     brief: dict[str, Any] = field(default_factory=dict)
+    architect_brief: str = ""                  # Senior mode: substance plan written by the strongest model
     research: str = ""
     sources: list[dict[str, str]] = field(default_factory=list)
     body: str = ""

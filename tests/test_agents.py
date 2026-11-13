@@ -29,7 +29,11 @@ BODY = "Intro paragraph about agents.\n\n## Why\n\n" + ("Agents call tools in a 
 
 
 class FakeLLM:
-    def __init__(self, *a, **k):
+    azure_ready = True
+
+    def __init__(self, *a, approver=None, **k):
+        self.approver = approver
+        self.roles_called = []
         self.usage = {"calls": 0}
         self.active = 0
         self.max_active = 0
@@ -56,6 +60,9 @@ class FakeLLM:
 
     async def chat(self, role, system, user, json_mode=False):
         await self._tick()
+        self.roles_called.append(role)
+        if role == "architect":
+            return "## Thesis\nX"
         if role == "editor":
             return '<meta>{"title": "T", "description": "D", "tldr": "TL", "takeaways": ["a"], "tags": ["agents"]}</meta><body>' + BODY + "</body>"
         if role == "designer":
@@ -100,6 +107,29 @@ class TestPipeline(unittest.TestCase):
         self.assertTrue(list((TMP / "ops" / "runs").glob("*.json")))
 
 
+    def test_senior_mode_adds_architect_and_playbook(self):
+        add_ideas([{"title": "kv cache"}], "cli")
+
+        class SeniorApprover:
+            mode = "senior"
+
+            async def choose_mode(self, titles, azure_ready):
+                return "senior"
+        fake = FakeLLM(approver=SeniorApprover())
+        with mock.patch.object(orchestrator, "make_llm", return_value=fake):
+            posts = asyncio.run(orchestrator.run_write(["T001"], open_pr=False, build=False))
+        self.assertTrue(posts[0].ok, posts[0].error)
+        self.assertIn("architect", fake.roles_called)
+        self.assertEqual(posts[0].architect_brief, "## Thesis\nX")
+
+    def test_free_mode_skips_architect(self):
+        add_ideas([{"title": "kv cache"}], "cli")
+        fake = FakeLLM()
+        with mock.patch.object(orchestrator, "make_llm", return_value=fake):
+            asyncio.run(orchestrator.run_write(["T001"], open_pr=False, build=False))
+        self.assertNotIn("architect", fake.roles_called)
+
+
 class TestHelpers(unittest.TestCase):
     def test_sanitize_keeps_components(self):
         src = '<Callout type="tip">Use x <= 3 and {y}</Callout>\n<Terminal lines={`$ ls\nok {x}`} />\nsee `a<b>` and [l](https://x.y/{z})'
@@ -117,59 +147,94 @@ class TestHelpers(unittest.TestCase):
 
     def _client(self, approver=None):
         os.environ.update(OPENROUTER_API_KEY="x", AZURE_OPENAI_API_KEY="y", AZURE_OPENAI_ENDPOINT="https://e.openai.azure.com",
-                          AZURE_OPENAI_DEPLOYMENT="gpt")
+                          AZURE_OPENAI_DEPLOYMENT="gpt-mini", AZURE_OPENAI_DEPLOYMENT_ARCHITECT="gpt-big")
         self.addCleanup(lambda: [os.environ.pop(k, None) for k in
-                                 ("OPENROUTER_API_KEY", "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_DEPLOYMENT")])
-        return llm_mod.LLM(approver=approver)
+                                 ("OPENROUTER_API_KEY", "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_ENDPOINT",
+                                  "AZURE_OPENAI_DEPLOYMENT", "AZURE_OPENAI_DEPLOYMENT_ARCHITECT")])
+        client = llm_mod.LLM(approver=approver)
+        self.calls = []
 
-    def test_free_models_used_first(self):
-        seen = []
-        client = self._client()
-
-        async def orr(rc, models, messages, json_mode, *, paid):
-            seen.append((tuple(models), paid))
-            return "free answer"
-        client._call_openrouter = orr
-        self.assertEqual(asyncio.run(client.chat("writer", "s", "u")), "free answer")
-        self.assertTrue(all(m.endswith(":free") for m in seen[0][0]))
-        self.assertFalse(seen[0][1])
-
-    def test_paid_needs_approval(self):
-        class Deny:
-            asked = 0
-
-            async def allow_paid(self, role, model, reason):
-                Deny.asked += 1
-                return False
-        client = self._client(Deny())
-
-        async def orr(rc, models, messages, json_mode, *, paid):
-            if not paid:
+        async def orr(rc, models, messages, json_mode):
+            self.calls.append(("free", tuple(models)))
+            if getattr(self, "free_fails", False):
                 raise RuntimeError("429 rate limited")
-            raise AssertionError("paid model must not be called without approval")
-        client._call_openrouter = orr
-        with self.assertRaises(llm_mod.LLMError):
-            asyncio.run(client.chat("writer", "s", "u"))
-        self.assertEqual(Deny.asked, 1)
+            return "free answer"
 
-    def test_approved_paid_then_azure(self):
-        class Allow:
-            async def allow_paid(self, role, model, reason):
-                return True
-        client = self._client(Allow())
-        calls = []
-
-        async def orr(rc, models, messages, json_mode, *, paid):
-            calls.append("paid" if paid else "free")
-            raise RuntimeError("down")
-
-        async def az(*a, **k):
-            calls.append("azure")
-            return "from azure"
+        async def az(rc, messages, json_mode):
+            self.calls.append(("azure", llm_mod.azure_deployment(rc.azure)))
+            return "azure answer"
         client._call_openrouter = orr
         client._call_azure = az
-        self.assertEqual(asyncio.run(client.chat("editor", "s", "u")), "from azure")
-        self.assertEqual(calls, ["free", "paid", "azure"])
+        return client
+
+    class _Ap:
+        def __init__(self, mode=None, allow=False):
+            self.mode, self.allow, self.asked = mode, allow, 0
+
+        async def allow_paid(self, role, model, reason):
+            self.asked += 1
+            return self.allow
+
+    def test_openrouter_is_free_only(self):
+        os.environ["MODEL_WRITER_FREE"] = "openai/gpt-5-mini,nvidia/nemotron-3-ultra-550b-a55b:free"
+        self.addCleanup(lambda: os.environ.pop("MODEL_WRITER_FREE", None))
+        self.assertEqual(llm_mod.load_role("writer").free, ["nvidia/nemotron-3-ultra-550b-a55b:free"])
+
+    def test_free_mode_uses_free_models(self):
+        client = self._client(self._Ap(mode="free"))
+        self.assertEqual(asyncio.run(client.chat("writer", "s", "u")), "free answer")
+        self.assertEqual(self.calls[0][0], "free")
+        self.assertTrue(all(m.endswith(":free") for m in self.calls[0][1]))
+
+    def test_free_mode_failure_needs_approval(self):
+        ap = self._Ap(mode="free", allow=False)
+        client = self._client(ap)
+        self.free_fails = True
+        with self.assertRaises(llm_mod.LLMError):
+            asyncio.run(client.chat("writer", "s", "u"))
+        self.assertEqual(ap.asked, 1)
+        self.assertNotIn("azure", [c[0] for c in self.calls])
+
+    def test_free_mode_failure_approved_goes_to_azure(self):
+        client = self._client(self._Ap(mode="free", allow=True))
+        self.free_fails = True
+        self.assertEqual(asyncio.run(client.chat("writer", "s", "u")), "azure answer")
+        self.assertEqual([c[0] for c in self.calls], ["free", "azure"])
+
+    def test_senior_mode_tiers(self):
+        client = self._client(self._Ap(mode="senior"))
+        asyncio.run(client.chat("writer", "s", "u"))
+        asyncio.run(client.chat("reviewer", "s", "u"))
+        asyncio.run(client.chat("architect", "s", "u"))
+        asyncio.run(client.chat("router", "s", "u"))
+        self.assertEqual(self.calls, [("azure", "gpt-mini"), ("azure", "gpt-big"), ("azure", "gpt-big"),
+                                      ("free", ("google/gemma-4-26b-a4b-it:free", "google/gemma-4-31b-it:free"))])
+
+    def test_mini_mode_reviewer_stays_free(self):
+        client = self._client(self._Ap(mode="mini"))
+        asyncio.run(client.chat("writer", "s", "u"))
+        asyncio.run(client.chat("reviewer", "s", "u"))
+        self.assertEqual([c[0] for c in self.calls], ["azure", "free"])
+
+    def test_choose_mode_without_azure_is_free(self):
+        from agents import approval
+        ap = approval.Approver()
+        ap.tg = mock.Mock(enabled=True)
+        ap.url = "https://bot.example"
+        self.assertEqual(asyncio.run(ap.choose_mode(["T001 x"], azure_ready=False)), "free")
+
+    def test_choose_mode_uses_button_answer(self):
+        from agents import approval
+        ap = approval.Approver()
+        ap.tg = mock.Mock(enabled=True)
+        ap.url = "https://bot.example"
+
+        async def wait(key, allowed):
+            self.assertTrue(key.endswith("-mode"))
+            return "senior"
+        ap._wait = wait
+        self.assertEqual(asyncio.run(ap.choose_mode(["T001 x"], azure_ready=True)), "senior")
+        self.assertTrue(asyncio.run(ap.allow_paid("writer", "m", "r")))
 
     def test_approver_asks_once_for_parallel_teams(self):
         from agents import approval
@@ -178,10 +243,10 @@ class TestHelpers(unittest.TestCase):
         ap.url = "https://bot.example"
         asked = []
 
-        async def wait():
+        async def wait(key, allowed):
             asked.append(1)
             await asyncio.sleep(0.01)
-            return True
+            return "yes"
         ap._wait = wait
 
         async def many():

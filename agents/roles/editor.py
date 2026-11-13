@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from .base import HOUSE_STYLE, MDX_RULES, Agent, Post, split_tagged
+from .base import HOUSE_STYLE, MDX_RULES, PLAYBOOK, Agent, Post, split_tagged
 from .writer import strip_fences
 
 
@@ -12,8 +12,10 @@ class Editor(Agent):
     async def edit(self, post: Post, feedback: list[str] | None = None) -> None:
         fb = "\n".join(f"- {f}" for f in feedback) if feedback else ""
         task = (f"Revise the draft to fix ALL of these review issues:\n{fb}" if fb
-                else "Edit the draft: tighten prose, fix structure/flow, verify code is correct and runnable, "
-                     "ensure headings follow the outline, remove fluff and hype, keep technical depth.")
+                else "Edit the draft to the playbook's senior bar: enforce every non-negotiable ingredient, cut filler and banned "
+                     "phrases, make headings state the point, verify code is correct and runnable, keep and sharpen technical depth.")
+        if post.architect_brief:
+            task += f"\nThe draft must deliver everything in this architect brief:\n{post.architect_brief[:12000]}"
         user = f"""{task}
 
 Brief: {json.dumps(post.brief, ensure_ascii=False)}
@@ -32,7 +34,7 @@ Return exactly two tagged blocks:
 <body>
 ...full revised MDX body...
 </body>"""
-        out = await self.llm.chat(self.role, f"You are the senior editor of tinybrains.ai.\n{HOUSE_STYLE}", user)
+        out = await self.llm.chat(self.role, f"You are the senior editor of tinybrains.ai.\n{HOUSE_STYLE}\n\n# Writing playbook\n{PLAYBOOK}", user)
         body = split_tagged(out, "body")
         meta_raw = split_tagged(out, "meta")
         if body:

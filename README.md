@@ -4,7 +4,8 @@ An AI-engineering blog written by a team of AI agents that you drive from Telegr
 
 - **Site:** https://kuldeepz.github.io/tinybrains-blog (Astro, GitHub Pages)
 - **Bot:** Telegram → Cloudflare Worker → GitHub Actions agent teams → PR → you approve → live
-- **LLMs:** free OpenRouter models first; if they fail, the bot asks you in Telegram **[✅ Approve paid] [❌ No]** before using paid OpenRouter models, then Azure OpenAI (`agents/models.yaml`). One answer covers the whole run; no answer in 30 min = No
+- **LLMs:** OpenRouter **free models only**, and your **Azure OpenAI** deployments for paid work. Every `/write` asks you to choose **🏛 Senior / 💡 Mini / 🆓 Free** in Telegram. Nothing on Azure runs without your tap; no answer in 30 min = Free
+- **Quality:** a one-time senior-architect playbook (`agents/playbook/senior-architect.md`) is followed by every writer, editor and reviewer. In Senior mode, your strongest Azure model also writes a per-post *architect brief* that the mini model executes
 - **Storage:** public content + topic tracker in this repo; private material (chat logs, uploads) in your Google Drive, deleted after the post is published or rejected
 
 ```
@@ -55,11 +56,23 @@ Where things run: the **Telegram bot** runs on Cloudflare Workers; the **agent t
 2. Open **@userinfobot** → it replies with your numeric id → secret **`TELEGRAM_CHAT_ID`**. (The bot answers only this id.)
 
 ### Step 2 — LLM keys (≈5 min)
-1. openrouter.ai → Keys → Create, and add credit → secret **`OPENROUTER_API_KEY`**.
+
+| Mode | Architect brief | Writer / Editor / Designer / Researcher | Reviewer | PM, Router, Tester, Vision |
+|---|---|---|---|---|
+| 🏛 Senior | Azure `ARCHITECT` deployment | Azure mini | Azure `ARCHITECT` deployment | free |
+| 💡 Mini | none | Azure mini | free (Gemma: a different model family) | free |
+| 🆓 Free | none | free (Nemotron Ultra / ERNIE) | free | free |
+
+Free models are used as fallback when Azure errors; in Free mode, if the free models fail, the bot asks before using Azure.
+
+1. openrouter.ai → Keys → Create → secret **`OPENROUTER_API_KEY`** (only free models are used; a little credit raises the free-tier daily limit and pays for web search).
 2. Azure portal → your Azure OpenAI resource → Keys and Endpoint:
    - secret **`AZURE_OPENAI_ENDPOINT`** (e.g. `https://myres.openai.azure.com`)
    - secret **`AZURE_OPENAI_API_KEY`**
-   - **Variables** tab → **`AZURE_OPENAI_DEPLOYMENT`** = your model deployment name (optionally `AZURE_OPENAI_DEPLOYMENT_SMALL` for a cheaper one)
+   - **Variables** tab:
+     - **`AZURE_OPENAI_DEPLOYMENT`** = your **mini** deployment name (e.g. `gpt-5-mini`): writes the posts
+     - **`AZURE_OPENAI_DEPLOYMENT_ARCHITECT`** = your **strongest** deployment (e.g. `gpt-5`): writes the brief and reviews in Senior mode (falls back to the mini one if unset)
+     - optional `AZURE_OPENAI_DEPLOYMENT_SMALL` (cheapest, for helper roles) and `AZURE_OPENAI_API_VERSION` (default `2024-10-21`)
 
 ### Step 3 — GitHub token for the bot (≈2 min)
 github.com → Settings → Developer settings → **Fine-grained tokens** → Generate:
@@ -93,7 +106,7 @@ It deploys the Worker, stores its secrets in Cloudflare, generates the webhook s
 2. `/write T001`: watch **Actions → Agents**. After about 5–15 min a draft arrives in Telegram with ✅/❌.
 3. Tap ✅: the post appears on the site about 2 minutes later.
 
-Optional tuning (Variables tab): `TB_MAX_PARALLEL` (default 4 teams at once), `TB_APPROVAL_TIMEOUT` (seconds, default 1800), and per-role model overrides such as `MODEL_WRITER_FREE` = `nvidia/nemotron-3-ultra-550b-a55b:free,google/gemma-4-31b-it:free` or `MODEL_WRITER_PAID` = `anthropic/claude-sonnet-5.5`. `TB_BOT_URL` (the Worker URL) must be set for paid-model approval to work.
+Optional tuning (Variables tab): `TB_MAX_PARALLEL` (default 4 teams at once), `TB_APPROVAL_TIMEOUT` (seconds, default 1800), and `TB_REVIEW_MIN` (reviewer pass score, default 9), and per-role overrides such as `MODEL_WRITER_FREE` = `nvidia/nemotron-3-ultra-550b-a55b:free,google/gemma-4-31b-it:free` (only `:free` ids are accepted) or `MODEL_REVIEWER_AZURE` = `mini|architect|small`. `TB_BOT_URL` (the Worker URL) must be set for paid-model approval to work.
 
 ## Privacy
 - Chat text and uploads are **never committed**. The workflow reads the Telegram payload from `$GITHUB_EVENT_PATH` and never echoes it or puts it in `env:` (env blocks show up in public Actions logs).
