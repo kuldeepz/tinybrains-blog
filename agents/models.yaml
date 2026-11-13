@@ -54,12 +54,12 @@ roles:
     max_tokens: 20000    # reasoning + rubric JSON
     reasoning_effort: medium
   tester:
-    free: [google/gemma-4-26b-a4b-it:free, google/gemma-4-31b-it:free]
+    free: [google/gemma-4-26b-a4b-it:free, google/gemma-4-31b-it:free, baidu/ernie-5.5-flash-preview:free]
     azure: small
     temperature: 0.0
     max_tokens: 16000
   router:
-    free: [google/gemma-4-26b-a4b-it:free, google/gemma-4-31b-it:free]
+    free: [google/gemma-4-26b-a4b-it:free, google/gemma-4-31b-it:free, baidu/ernie-5.5-flash-preview:free]
     azure: small
     temperature: 0.0
     max_tokens: 800
