@@ -38,11 +38,11 @@
       "id": "T002",
       "title": "Google Gemini's latest model",
       "notes": "Cover the latest Google Gemini model referenced in the request. Do not invent version names, benchmark numbers, pricing, availability, or capabilities.",
-      "status": "queued",
+      "status": "in_progress",
       "tags": [],
       "source": "telegram",
       "created": "2026-11-14T08:17:10Z",
-      "updated": "2026-11-14T08:17:10Z",
+      "updated": "2026-11-14T08:17:12Z",
       "slug": null,
       "pr": null,
       "url": null,
@@ -51,6 +51,10 @@
         {
           "at": "2026-11-14T08:17:10Z",
           "status": "queued"
+        },
+        {
+          "at": "2026-11-14T08:17:12Z",
+          "status": "in_progress"
         }
       ]
     },
@@ -58,11 +62,11 @@
       "id": "T003",
       "title": "Hydrogen benchmark",
       "notes": "Cover the benchmark aspect tied to 'hydrogen' in the request. Verify what 'hydrogen' refers to before publishing; do not invent scores, sources, or comparisons.",
-      "status": "queued",
+      "status": "in_progress",
       "tags": [],
       "source": "telegram",
       "created": "2026-11-14T08:17:10Z",
-      "updated": "2026-11-14T08:17:10Z",
+      "updated": "2026-11-14T08:17:12Z",
       "slug": null,
       "pr": null,
       "url": null,
@@ -71,6 +75,10 @@
         {
           "at": "2026-11-14T08:17:10Z",
           "status": "queued"
+        },
+        {
+          "at": "2026-11-14T08:17:12Z",
+          "status": "in_progress"
         }
       ]
     }
