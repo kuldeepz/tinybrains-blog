@@ -38,14 +38,14 @@
       "id": "T002",
       "title": "What to Verify Before Adopting Google's Latest Gemini Model",
       "notes": "Cover the latest Google Gemini model referenced in the request. Do not invent version names, benchmark numbers, pricing, availability, or capabilities.\n[last run failed: LLMError: free[baidu/ernie-5.5-flash-preview:free…]: LLMError: empty completion]\n[last run failed: LLMError: free[baidu/ernie-5.5-flash-preview:free…]: LLMError: empty completion]\n[last run failed: LLMError: free[baidu/ernie-5.5-flash-preview:free]: LLMError: empty completion; free[nvidia/nemotron-3.5-super-vl:free]: LLMError: empty completion]",
-      "status": "in_review",
+      "status": "published",
       "tags": [],
       "source": "telegram",
       "created": "2026-11-14T08:17:10Z",
-      "updated": "2026-11-14T13:39:00Z",
+      "updated": "2026-11-14T13:45:27Z",
       "slug": "what-to-verify-before-adopting-google-s-latest-gemini-model",
       "pr": 2,
-      "url": null,
+      "url": "https://kuldeepz.github.io/tinybrains-blog/posts/what-to-verify-before-adopting-google-s-latest-gemini-model/",
       "private_files": false,
       "history": [
         {
@@ -83,8 +83,13 @@
         {
           "at": "2026-11-14T13:39:00Z",
           "status": "in_review"
+        },
+        {
+          "at": "2026-11-14T13:45:27Z",
+          "status": "published"
         }
-      ]
+      ],
+      "rewriting": false
     },
     {
       "id": "T003",
