@@ -22,7 +22,7 @@ jobs:
           PAT: ${{ secrets.BOT_GITHUB_PAT }}
         run: |
           if [ -z "$CF" ] || [ -z "$TG" ] || [ -z "$PAT" ]; then
-            echo "::warning::Bot secrets not set yet - skipping deploy (see README 'Setup')."
+            echo "::warning::Bot secrets not set yet - skipping deploy. Add the bot secrets first."
             echo "ready=false" >> "$GITHUB_OUTPUT"
           else
             echo "ready=true" >> "$GITHUB_OUTPUT"
