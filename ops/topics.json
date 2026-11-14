@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "next_id": 2,
+  "next_id": 4,
   "topics": [
     {
       "id": "T001",
@@ -31,6 +31,46 @@
         {
           "at": "2026-11-13T13:12:38Z",
           "status": "published"
+        }
+      ]
+    },
+    {
+      "id": "T002",
+      "title": "Google Gemini's latest model",
+      "notes": "Cover the latest Google Gemini model referenced in the request. Do not invent version names, benchmark numbers, pricing, availability, or capabilities.",
+      "status": "queued",
+      "tags": [],
+      "source": "telegram",
+      "created": "2026-11-14T08:17:10Z",
+      "updated": "2026-11-14T08:17:10Z",
+      "slug": null,
+      "pr": null,
+      "url": null,
+      "private_files": false,
+      "history": [
+        {
+          "at": "2026-11-14T08:17:10Z",
+          "status": "queued"
+        }
+      ]
+    },
+    {
+      "id": "T003",
+      "title": "Hydrogen benchmark",
+      "notes": "Cover the benchmark aspect tied to 'hydrogen' in the request. Verify what 'hydrogen' refers to before publishing; do not invent scores, sources, or comparisons.",
+      "status": "queued",
+      "tags": [],
+      "source": "telegram",
+      "created": "2026-11-14T08:17:10Z",
+      "updated": "2026-11-14T08:17:10Z",
+      "slug": null,
+      "pr": null,
+      "url": null,
+      "private_files": false,
+      "history": [
+        {
+          "at": "2026-11-14T08:17:10Z",
+          "status": "queued"
         }
       ]
     }
