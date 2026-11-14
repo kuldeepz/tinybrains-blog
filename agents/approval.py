@@ -51,7 +51,7 @@ class Approver:
             return self.mode
         if not azure_ready:
             self.mode = "free"
-            self.tg.send("ℹ️ Azure isn't configured yet, so this run uses 🆓 free models only.")
+            self.tg.send("ℹ️ Paid models aren't configured yet, so this run uses 🆓 free models only.")
             return self.mode
         if not self.channel_ok:
             self.mode = "free"
@@ -61,8 +61,8 @@ class Approver:
         lines = "\n".join(f"• {esc(t)}" for t in titles[:10])
         self.tg.send(
             f"🧭 <b>Choose quality for {n} post{'s' if n > 1 else ''}</b>\n{lines}\n\n"
-            f"🏛 <b>Senior</b>: architect brief + playbook + strong reviewer ({EST_PER_POST['senior']} per post, Azure)\n"
-            f"💡 <b>Mini</b>: Azure mini + playbook ({EST_PER_POST['mini']} per post)\n"
+            f"🏛 <b>Senior</b>: architect brief + playbook + strong reviewer ({EST_PER_POST['senior']} per post, paid)\n"
+            f"💡 <b>Mini</b>: paid mini + playbook ({EST_PER_POST['mini']} per post)\n"
             f"🆓 <b>Free</b>: free models only ({EST_PER_POST['free']})\n"
             f"No answer in {self.timeout // 60} min = Free.",
             buttons=[[{"text": "🏛 Senior", "callback_data": f"paid:{key}:senior"},
@@ -91,13 +91,13 @@ class Approver:
             key = f"{self.base_key}-paid"
             self.tg.send(
                 f"💸 <b>Free models failed</b> for <i>{esc(role)}</i> ({esc(reason[:160])}).\n"
-                f"Use Azure (<code>{esc(model)}</code>) for the rest of this run?\n"
+                f"Use the paid model (<code>{esc(model)}</code>) for the rest of this run?\n"
                 f"No answer in {self.timeout // 60} min = No.",
-                buttons=[[{"text": "✅ Approve Azure", "callback_data": f"paid:{key}:yes"},
+                buttons=[[{"text": "✅ Approve paid", "callback_data": f"paid:{key}:yes"},
                           {"text": "❌ No, stop", "callback_data": f"paid:{key}:no"}]],
             )
             self.decision = (await self._wait(key, ("yes", "no"))) == "yes"
-            self.tg.send("✅ Azure approved for this run." if self.decision else "⏹ Azure not approved; stopping affected posts.")
+            self.tg.send("✅ Paid model approved for this run." if self.decision else "⏹ Paid model not approved; stopping affected posts.")
             return self.decision
 
     async def _wait(self, key: str, allowed: tuple[str, ...]) -> str | None:

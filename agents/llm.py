@@ -117,26 +117,29 @@ class LLM:
             try:
                 return await self._call_azure(rc, messages, json_mode)
             except Exception as e:  # noqa: BLE001
-                errors.append(f"azure[{rc.azure}]: {type(e).__name__}: {str(e)[:160]}")
-                log.warning("Azure failed for %s, trying free models: %s", role, errors[-1])
+                errors.append(f"paid[{rc.azure}]: {type(e).__name__}: {str(e)[:160]}")
+                log.warning("Paid model failed for %s, trying free models: %s", role, errors[-1])
         if self._or and rc.free:
-            try:
-                out = await self._call_openrouter(rc, rc.free, messages, json_mode)
-                self.usage["fallbacks"] += bool(errors)
-                return out
-            except Exception as e:  # noqa: BLE001
-                errors.append(f"free[{rc.free[0]}…]: {type(e).__name__}: {str(e)[:160]}")
-                log.warning("free models failed for %s: %s", role, errors[-1])
+            # OpenRouter's native fallback only covers errors; an empty or broken answer from the first model
+            # (common on free tiers) must still move on to the next one.
+            for i in range(len(rc.free)):
+                try:
+                    out = await self._call_openrouter(rc, rc.free[i:], messages, json_mode)
+                    self.usage["fallbacks"] += bool(errors)
+                    return out
+                except Exception as e:  # noqa: BLE001
+                    errors.append(f"free[{rc.free[i]}]: {type(e).__name__}: {str(e)[:160]}")
+                    log.warning("free model failed for %s: %s", role, errors[-1])
         if prefer_azure or not self._az:
             raise LLMError("; ".join(errors) or f"no model available for {role}")
-        if not await self._paid_ok(role, f"Azure {rc.azure}", errors[-1] if errors else "no free model for this role"):
+        if not await self._paid_ok(role, f"paid {rc.azure}", errors[-1] if errors else "no free model for this role"):
             raise LLMError("paid models not approved; " + "; ".join(errors))
         try:
             out = await self._call_azure(rc, messages, json_mode)
             self.usage["fallbacks"] += 1
             return out
         except Exception as e:  # noqa: BLE001
-            errors.append(f"azure[{rc.azure}]: {type(e).__name__}: {str(e)[:160]}")
+            errors.append(f"paid[{rc.azure}]: {type(e).__name__}: {str(e)[:160]}")
         raise LLMError("; ".join(errors))
 
     async def _call_openrouter(self, rc: RoleConfig, models: list[str], messages, json_mode: bool) -> str:

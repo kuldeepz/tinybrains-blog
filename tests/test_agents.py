@@ -207,7 +207,8 @@ class TestHelpers(unittest.TestCase):
         client = self._client(self._Ap(mode="free", allow=True))
         self.free_fails = True
         self.assertEqual(asyncio.run(client.chat("writer", "s", "u")), "azure answer")
-        self.assertEqual([c[0] for c in self.calls], ["free", "azure"])
+        self.assertEqual([c[0] for c in self.calls], ["free", "free", "azure"])  # every free model tried first
+        self.assertEqual(self.calls[1][1][0], "baidu/ernie-5.5-flash-preview:free")
 
     def test_senior_mode_tiers(self):
         client = self._client(self._Ap(mode="senior"))
