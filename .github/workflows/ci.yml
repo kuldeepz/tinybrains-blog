@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
     paths: ["agents/**", "tests/**", "bot/**"]
+permissions:
+  contents: read
 jobs:
   site:
     if: github.event_name == 'pull_request'
