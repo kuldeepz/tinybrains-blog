@@ -37,12 +37,12 @@
     {
       "id": "T002",
       "title": "Google Gemini's latest model",
-      "notes": "Cover the latest Google Gemini model referenced in the request. Do not invent version names, benchmark numbers, pricing, availability, or capabilities.",
-      "status": "in_progress",
+      "notes": "Cover the latest Google Gemini model referenced in the request. Do not invent version names, benchmark numbers, pricing, availability, or capabilities.\n[last run failed: LLMError: free[baidu/ernie-5.5-flash-preview:free…]: LLMError: empty completion]",
+      "status": "idea",
       "tags": [],
       "source": "telegram",
       "created": "2026-11-14T08:17:10Z",
-      "updated": "2026-11-14T08:17:12Z",
+      "updated": "2026-11-14T08:17:57Z",
       "slug": null,
       "pr": null,
       "url": null,
@@ -55,18 +55,22 @@
         {
           "at": "2026-11-14T08:17:12Z",
           "status": "in_progress"
+        },
+        {
+          "at": "2026-11-14T08:17:57Z",
+          "status": "idea"
         }
       ]
     },
     {
       "id": "T003",
       "title": "Hydrogen benchmark",
-      "notes": "Cover the benchmark aspect tied to 'hydrogen' in the request. Verify what 'hydrogen' refers to before publishing; do not invent scores, sources, or comparisons.",
-      "status": "in_progress",
+      "notes": "Cover the benchmark aspect tied to 'hydrogen' in the request. Verify what 'hydrogen' refers to before publishing; do not invent scores, sources, or comparisons.\n[last run failed: LLMError: free[baidu/ernie-5.5-flash-preview:free…]: LLMError: empty completion]",
+      "status": "idea",
       "tags": [],
       "source": "telegram",
       "created": "2026-11-14T08:17:10Z",
-      "updated": "2026-11-14T08:17:12Z",
+      "updated": "2026-11-14T08:17:57Z",
       "slug": null,
       "pr": null,
       "url": null,
@@ -79,6 +83,10 @@
         {
           "at": "2026-11-14T08:17:12Z",
           "status": "in_progress"
+        },
+        {
+          "at": "2026-11-14T08:17:57Z",
+          "status": "idea"
         }
       ]
     }

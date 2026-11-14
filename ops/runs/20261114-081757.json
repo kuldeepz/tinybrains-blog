@@ -1,0 +1,43 @@
+{
+  "run": "20261114-081757",
+  "mode": "free",
+  "usage": {
+    "calls": 4,
+    "free_calls": 2,
+    "paid_calls": 0,
+    "fallbacks": 0,
+    "prompt_tokens": 17708,
+    "completion_tokens": 17926,
+    "models": {
+      "baidu/ernie-5.5-flash-preview:free": 2
+    }
+  },
+  "posts": [
+    {
+      "topic": "T002",
+      "slug": "google-gemini-s-latest-model-a-practitioner-s-evaluation-checklist",
+      "ok": false,
+      "pr": null,
+      "error": "LLMError: free[baidu/ernie-5.5-flash-preview:free\u2026]: LLMError: empty completion",
+      "scores": [],
+      "reviews": [],
+      "log": [
+        "[team-1/PM#1] brief ready: 'Google Gemini's Latest Model: A Practitioner's Evaluation Checklist' [LLMs/Practitioner/Article]",
+        "[team-1/Head] team failed: LLMError: free[baidu/ernie-5.5-flash-preview:free\u2026]: LLMError: empty completion"
+      ]
+    },
+    {
+      "topic": "T003",
+      "slug": "hydrogen-benchmark-what-it-is-what-it-measures-and-how-to-verify-it",
+      "ok": false,
+      "pr": null,
+      "error": "LLMError: free[baidu/ernie-5.5-flash-preview:free\u2026]: LLMError: empty completion",
+      "scores": [],
+      "reviews": [],
+      "log": [
+        "[team-2/PM#2] brief ready: 'Hydrogen Benchmark: What It Is, What It Measures, and How to Verify It' [Evals/Practitioner/Article]",
+        "[team-2/Head] team failed: LLMError: free[baidu/ernie-5.5-flash-preview:free\u2026]: LLMError: empty completion"
+      ]
+    }
+  ]
+}
