@@ -1,0 +1,358 @@
+---
+title: What to Verify Before Adopting Google's Latest Gemini Model
+description: Verify Gemini model identity, API behavior, workload quality, costs, and fallback rules before migration. Use smoke checks, adapter replay, and rollout gates.
+date: 2026-11-14
+topic: LLMs
+level: Practitioner
+type: Article
+tags:
+- gemini
+- google
+- llms
+- evals
+- api
+- migration
+tldr: Adopt an exact deployment contract, not a model announcement. Compare baseline and candidate independently, and keep task success separate from response completion and fallback recovery. Bare-text smoke checks catch basic integration problems but cannot gate a production migration. Require production-adapter replay, realistic-load evidence, and a reversible rollout.
+takeaways:
+- Record model, channel, endpoint, lifecycle, configuration, and client identity together.
+- Completed text is not task success; textual refusals need task-level labeling or judging.
+- Keep candidate-only scores separate from fallback recovery.
+- Use bare-text smoke metrics for diagnosis, then replay through the real production adapters.
+- Migrate only after quality, safety, cost, reliability, and rollback gates have evidence.
+cover: covers/what-to-verify-before-adopting-google-s-latest-gemini-model.svg
+sources:
+- title: Gemini API documentation
+  url: https://ai.google.dev/gemini-api/docs
+- title: Gemini API models
+  url: https://ai.google.dev/gemini-api/docs/models
+- title: Gemini API pricing
+  url: https://ai.google.dev/gemini-api/docs/pricing
+- title: Gemini API release notes
+  url: https://ai.google.dev/gemini-api/docs/release-notes
+- title: Vertex AI Gemini models
+  url: https://cloud.google.com/vertex-ai/generative-ai/docs/models/gemini
+- title: Vertex AI pricing for generative AI
+  url: https://cloud.google.com/vertex-ai/generative-ai/pricing
+- title: Vertex AI quotas and limits
+  url: https://cloud.google.com/vertex-ai/generative-ai/docs/quotas
+- title: Vertex AI release notes
+  url: https://cloud.google.com/vertex-ai/generative-ai/docs/release-notes
+author: Kuldeep Rao
+draft: false
+version: 1
+---
+
+An announcement can be useful, but it is not a deployment contract. Switching to the latest Gemini without checking the exact model ID, access path, location, quotas, safety behavior, and client semantics can ship silent regressions. Fallback can conceal those failures while latency and cost climb.
+
+Verify the contract, not the brand: the exact model identifier, channel, capability set, and measured operating envelope. Keep the current model until the candidate clears explicit quality, reliability, cost, rollback, and data-control gates. Start with an evidence ledger, then an independent paired evaluation and a reversible rollout.
+
+## Why latest Gemini is not a deployment spec
+
+Google exposes multiple model IDs and lifecycle variants through operationally different deployment surfaces: the Gemini API and Vertex AI. A model listing proves discoverability, not production readiness for your account, location, billing setup, or SDK.
+
+Use an evidence ledger. Fill dates and artifact references from actual checks; a link alone is not verification.
+
+| Claim | Official source | Exact deployment | Verification date | Result and evidence artifact |
+|---|---|---|---|---|
+| Model exists and supports required methods | [Gemini API models](https://ai.google.dev/gemini-api/docs/models) or [Vertex Gemini models](https://cloud.google.com/vertex-ai/generative-ai/docs/models/gemini) | ID, channel, endpoint, location | date checked | result; model-list capture and authenticated smoke-test record |
+| Required capabilities supported | channel-specific model docs and release notes | model, client, configuration | date checked | result; assertions and response metadata |
+| Client semantics established | official client and transport references | installed versions, synchronous/asynchronous transport | date checked | timeout units, retry counting, exception behavior, reference snapshot |
+| Capacity available | [Gemini API rate limits](https://ai.google.dev/gemini-api/docs/rate-limits) or [Vertex quotas](https://cloud.google.com/vertex-ai/generative-ai/docs/quotas) | account/project, tier, location | date checked | result; account configuration and load-test artifact |
+| Pricing known | [Gemini pricing](https://ai.google.dev/gemini-api/docs/pricing) or [Vertex pricing](https://cloud.google.com/vertex-ai/generative-ai/pricing) | channel, model, billable features | date checked | result; pricing snapshot and cost worksheet |
+| Lifecycle known | [Gemini release notes](https://ai.google.dev/gemini-api/docs/release-notes) or [Vertex release notes](https://cloud.google.com/vertex-ai/generative-ai/docs/release-notes) | exact ID or alias | date checked | result; relevant release-note reference |
+
+<PullQuote>Verify the deployment contract, not the model brand.</PullQuote>
+
+Equal parameters do not imply equal behavior. Sampling, safety, tool selection, and output defaults can differ. Compare unchanged prompts first; evaluate candidate-specific tuning separately so improvements do not conceal migration regressions.
+
+## Identify the exact model and access path together
+
+The Gemini API uses an API-key access flow; Vertex AI uses Google Cloud project, authentication, billing, and endpoint configuration. Do not assume channel parity.
+
+1. Find the model in the official channel-specific documentation or model listing.
+2. Record the exact ID and lifecycle status.
+3. Record endpoint, location where applicable, account tier, and authentication method.
+4. Record installed SDK version, API configuration, and prompt-template version.
+5. Confirm access with an authenticated request in the intended environment.
+
+For Vertex, check whether the selected deployment uses a global or regional endpoint and which locations support it. Endpoint location alone does not establish processing or retention guarantees.
+
+### Choose the access path for its verified controls
+
+| Option | Quality evidence | Cost and latency | Operational burden and failure behavior | Choose when |
+|---|---|---|---|---|
+| Keep production model | Known baseline; existing defects remain | Known operating envelope | Lowest migration risk; monitor lifecycle | Candidate misses gates or evidence is incomplete |
+| Candidate via Gemini API | Verify exact model and features | Verify channel pricing and account limits; measure latency | API-key lifecycle, quotas, data terms, availability | Documented controls meet requirements and workload gates pass |
+| Candidate via Vertex AI | Verify independently; branding does not establish parity | Verify pricing, endpoint capacity, quotas | IAM, endpoint/location configuration, billing, integration work | Google Cloud controls justify the integration work |
+
+Preview versus stable is a lifecycle decision, not a quality ranking. Neither channel inherently guarantees better latency.
+
+## Prove each required capability independently
+
+Run the smallest tests that can fail in meaningful ways. Record documented support separately from observed results: documented unsupported behavior is a capability gap, not automatically a migration regression.
+
+| Test | Assertion |
+|---|---|
+| Supported media | Representative documented text/image/audio/video/file inputs produce the task-required result on the exact deployment |
+| Unsupported media | A documented unsupported format is rejected as specified; the adapter reports it without transient fallback |
+| Valid schema request | Supported schema is accepted; output validates against it |
+| Invalid schema request | Unsupported or malformed schema is rejected as documented; no retry or fallback |
+| Business-value validation | Required fields contain correct values; forbidden actions remain absent |
+| Blocked, completed, and empty responses | Record provider blocks, finish state, and text presence separately from task success; label textual refusals at the task boundary; none triggers transient fallback |
+| Input/output boundaries | Test around documented limits and application budgets; assert rejection, truncation, or finish reason rather than assuming completion |
+| Streaming termination | Measure first token and completion; detect disconnects, missing terminal state, partial output, cancellation, and usage availability |
+
+Finish metadata alone does not identify every refusal. A response can terminate normally with text that declines the task. Textual refusals require task-level labeling or judging; the correct task label also depends on whether refusal was required by the safety rubric.
+
+If a required modality is documented unsupported, choose another deployment or wait. If documented supported behavior fails, preserve the request configuration and sanitized evidence for investigation.
+
+<Callout type="warning" title="Tool call is a request, not authorization">
+Keep an allow-list and validate arguments before execution. Treat retrieved content as untrusted input. A model requesting an action does not authorize it.
+</Callout>
+
+Structured output can validate clean JSON while returning the wrong business value. Score schema validity, factual values, and forbidden actions separately.
+
+## Build a task-specific eval before migration
+
+Start with 20–100 representative cases, including long-context, tool, multilingual, schema-critical, and safety-sensitive slices where relevant. Freeze expected values or task-specific predicates. Repeat stochastic tasks; use blind judging for subjective outputs.
+
+Zero failures in 100 independent, representative cases gives an approximate 95% upper failure-rate bound of 3%: `1 − 0.05^(1/100) ≈ 0.03`. A small correctness suite cannot certify rare-event reliability or p99 latency.
+
+Report baseline pass rate, candidate-only pass rate, and baseline-pass/candidate-fail regressions. The supplied script compares **bare text calls under a shared smoke configuration**, not the complete production integration. Its summary values are **smoke metrics**, not migration gates.
+
+Before migration, require a second replay through the real baseline and candidate adapters, using recorded system instructions, tools, schemas, safety settings, and generation configuration. Preserve adapter-specific behavior rather than silently replacing it with shared defaults.
+
+Separately report fallback frequency, recovery among fallback attempts, and end-to-end success. Preserve run identity: date, models, channel, dataset, scoring method, client versions, configuration, and prompt version.
+
+### Keep retry policy and evaluation scores separate
+
+The example uses direct synchronous HTTP requests rather than SDK retry and timeout settings. Each application attempt performs one `httpx` request with transport retries disabled. It classifies selected HTTP statuses and `httpx.TimeoutException` as transient; other HTTP failures do not trigger recovery, and unexpected transport, decoding, and programming errors propagate.
+
+For an SDK-based production adapter, attach the installed SDK version, reference-check date, and evidence for timeout units, retry counting, and synchronous exception behavior to the deployment ledger. The [official Python client documentation](https://googleapis.github.io/python-genai/) and [API reference](https://googleapis.github.io/python-genai/genai.html) are the starting points. Do not infer those semantics from a parameter name.
+
+Install the direct transport:
+
+```bash
+pip install httpx
+```
+
+```python title="gemini_smoke.py"
+import json
+import os
+import random
+import sys
+import time
+from importlib.metadata import version
+
+import httpx
+
+TRANSIENT = {429, 500, 502, 503, 504}
+BLOCKED = {"SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT",
+           "SPII", "IMAGE_SAFETY", "IMAGE_PROHIBITED_CONTENT"}
+TOTAL_S, REQUEST_S = 20.0, 10.0
+manifest = json.load(open(sys.argv[1], encoding="utf-8"))
+manifest["client"] = {"sdk": None, "httpx": version("httpx")}
+run_id = manifest["run_id"]
+
+def emit(record):
+    print(json.dumps(record), flush=True)
+
+def attempt(client, role, row, index, fallback, remaining):
+    start = time.monotonic()
+    deployment = manifest["models"][role]
+    r = dict(run_id=run_id, case_id=row["id"], role=role,
+             model=deployment["id"], attempt=index, fallback=fallback,
+             usage=None, error_code=None, error_class=None, outcome="other",
+             text="")
+    try:
+        response = client.post(
+            deployment["url"],
+            json={"contents": [{"parts": [{"text": row["prompt"]}]}],
+                  "generationConfig": manifest["generation_config"]},
+            timeout=min(REQUEST_S, remaining))
+        r["error_code"] = response.status_code if response.is_error else None
+        if response.is_error:
+            r["outcome"] = ("transient" if response.status_code in TRANSIENT
+                            else "api_error")
+        else:
+            data = response.json()
+            r["usage"] = data.get("usageMetadata")
+            candidates = data.get("candidates") or []
+            c = candidates[0] if candidates else {}
+            reason = c.get("finishReason")
+            if data.get("promptFeedback", {}).get("blockReason") or reason in BLOCKED:
+                r["outcome"] = "blocked"
+            elif reason == "MAX_TOKENS":
+                r["outcome"] = "truncated"
+            elif reason == "STOP":
+                r["text"] = "".join(p.get("text", "") for p in
+                    (c.get("content") or {}).get("parts", []) if not p.get("thought"))
+                r["outcome"] = "completed_text" if r["text"].strip() else "empty"
+            elif not candidates:
+                r["outcome"] = "empty"
+    except httpx.TimeoutException as exc:
+        r.update(error_class=type(exc).__name__, outcome="transient")
+    r["attempt_latency_ms"] = (time.monotonic() - start) * 1000
+    emit({"kind": "attempt", **{k: v for k, v in r.items() if k != "text"}})
+    return r
+
+def run(client, role, row, deadline, fallback=False):
+    result = {"outcome": "deadline", "text": ""}
+    for index in range(1, 3):
+        remaining = deadline - time.monotonic()
+        if remaining < 0.001:
+            break
+        result = attempt(client, role, row, index, fallback, remaining)
+        if result["outcome"] != "transient" or index == 2:
+            break
+        time.sleep(min(random.uniform(0.2, 0.4),
+                       max(0, deadline - time.monotonic())))
+    return result
+
+def evaluate(client, role, row, fallback_role=None):
+    start = time.monotonic()
+    deadline = start + TOTAL_S
+    primary = run(client, role, row, deadline)
+    recovery = (run(client, fallback_role, row, deadline, True)
+                if fallback_role and primary["outcome"] == "transient"
+                and deadline - time.monotonic() >= 0.001 else None)
+    passed = lambda r: bool(r and r["outcome"] == "completed_text"
+                            and r["text"].strip() == row["expected"])
+    scores = (passed(primary), recovery is not None, passed(recovery))
+    emit(dict(kind="smoke_case", run_id=run_id, case_id=row["id"], role=role,
+              primary_outcome=primary["outcome"],
+              fallback_outcome=recovery["outcome"] if recovery else None,
+              primary_pass=scores[0], fallback_pass=scores[2],
+              end_to_end_latency_ms=(time.monotonic() - start) * 1000))
+    return scores
+
+emit({"kind": "run_manifest", **manifest})
+with httpx.Client(transport=httpx.HTTPTransport(retries=0), follow_redirects=False,
+                  headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"]}) as client:
+    scores = []
+    with open(sys.argv[2], encoding="utf-8") as dataset:
+        for line in filter(str.strip, dataset):
+            row = json.loads(line)
+            b = evaluate(client, "baseline", row)[0]
+            c, f, recovered = evaluate(client, "candidate", row, manifest.get("fallback_role"))
+            scores.append((b, c, f, recovered))
+n, nf = len(scores), sum(s[2] for s in scores)
+counts = dict(baseline_pass=sum(s[0] for s in scores), candidate_only_pass=sum(s[1] for s in scores),
+              regressions=sum(s[0] and not s[1] for s in scores), fallback_attempted=nf,
+              fallback_recovered=sum(s[3] for s in scores), end_to_end_pass=sum(s[1] or s[3] for s in scores))
+emit(dict(kind="smoke_summary", run_id=run_id, cases=n, counts=counts))
+```
+
+Each provider attempt carries the non-sensitive case ID and run ID, plus model, role, attempt index, fallback status, latency, usage or null, and error classification. The manifest preserves channel, endpoint, configuration, and client identity. Prompts and outputs stay in memory rather than entering the emitted records.
+
+`completed_text` describes response completion, not task success. The exact-answer predicate scores success separately. Replace it with task-specific scoring for real workloads, including refusal labels; blocked, empty, truncated, and completed-text responses never trigger transient fallback.
+
+The summary emits counts to keep aggregation explicit. Divide baseline, candidate-only, regression, fallback-attempted, and end-to-end counts by `cases`; divide fallback-recovered by fallback-attempted. A zero denominator means undefined, not zero.
+
+One monotonic deadline covers each primary run, backoff, and recovery. Remaining budget caps request timeout and sleep; exhausted budget prevents another call. HTTP transport timeouts are not guaranteed wall-clock cancellation of an entire synchronous operation. Enforce strict service-level deadlines with cancellation-capable orchestration, and measure overruns.
+
+Create a run manifest with confirmed, credential-free `generateContent` URLs for both models. This transport targets the Gemini API key flow; Vertex or a non-Gemini baseline requires its real adapter.
+
+```json
+{
+  "run_id": "smoke-001",
+  "channel": "gemini-api",
+  "models": {
+    "baseline": {"id": "confirmed-baseline-id", "url": "confirmed-baseline-generateContent-url"},
+    "candidate": {"id": "confirmed-candidate-id", "url": "confirmed-candidate-generateContent-url"}
+  },
+  "fallback_role": "baseline",
+  "generation_config": {"temperature": 0, "maxOutputTokens": 256},
+  "system_instructions": null,
+  "tools": [],
+  "schema": null,
+  "safety_settings": "service defaults",
+  "prompt_version": "exact-answer-smoke",
+  "dataset": "cases.jsonl",
+  "scoring": "stripped exact match",
+  "pricing": {"status": "unconfigured"}
+}
+```
+
+Keep pricing inputs in this manifest: model-keyed rates, currency, billing units, billable categories, source URL, and verification date. Unconfigured pricing is not free usage. Add endpoint/location, account tier, lifecycle, and dated evidence references for the selected deployment.
+
+Tiny valid `cases.jsonl`:
+
+```json
+{"id":"sum","prompt":"Return only the integer result of 2 + 2.","expected":"4"}
+{"id":"label","prompt":"Return exactly: ready","expected":"ready"}
+```
+
+Set `GEMINI_API_KEY` through your secret manager or environment, then run:
+
+```bash
+python gemini_smoke.py run-manifest.json cases.jsonl > eval-records.jsonl
+```
+
+The manifest URLs must come from the official API documentation for the selected models, not contain the example strings. The installed transport version is recorded automatically; no SDK version or version pin is implied.
+
+## Measure the operating envelope, not advertised speed
+
+Published context capacity is not usable-context quality. Test evidence placement, distractors, truncation, and output-budget interactions.
+
+Measure separately:
+
+- time to first token
+- completion latency
+- streaming failures, cancellation, and termination
+- provider-attempt latency
+- end-to-end latency including retries, backoff, and fallback
+
+Use realistic traffic to characterize p50/p95/p99, concurrency, quota exhaustion, and queue behavior—not the tiny correctness suite.
+
+**Estimate, assuming the stated traffic shape:**
+
+- At 10 requests/second and 2 seconds mean in-flight duration, average concurrency is `10 × 2 = 20`.
+- At 5 seconds, it becomes `10 × 5 = 50`.
+- With eligible transient probability 0.10 and one retry, expected attempts are `1 + 0.10 = 1.10`.
+- One million requests averaging 2,000 input and 500 output tokens yield 2,000 million input and 500 million output tokens. Token cost is `2,000 × Pinput + 500 × Poutput`, with rates per million tokens.
+
+This covers input/output token charges only; add other documented billable categories for the selected model and channel, plus retries and fallback. Sum usage across attempts. Absent usage remains unknown; reconcile it with billing rather than substituting zero.
+
+The retry arithmetic assumes one retry after an eligible transient failure. It is not a peak-load model: correlated outages require load testing, admission control, and bounded queues.
+
+Check Gemini API limits in its [official documentation](https://ai.google.dev/gemini-api/docs/rate-limits) and account configuration. Check Vertex limits in the [Vertex quota documentation](https://cloud.google.com/vertex-ai/generative-ai/docs/quotas) and project configuration.
+
+## Roll out without duplicating harm
+
+Privacy-approve shadow transmission before duplicating requests. Disable side effects and replay recorded tool results rather than executing tools again.
+
+Then run a controlled canary with owner-approved quantitative thresholds for quality, safety, latency, cost, and fallback frequency. Define observation windows, minimum sample sizes, and an automatic rollback trigger. A rollback must restore model and prompt configuration together.
+
+## How migration breaks in production
+
+| Symptom | Root cause | Mitigation |
+|---|---|---|
+| Valid JSON, wrong business result | Schema validation mistaken for correctness | Validate business values and forbidden actions |
+| Tool executes twice | Orchestration replay after timeout | Idempotency keys; persist tool results before continuation |
+| Healthy averages, failing peaks | Synchronized retries and exhausted quota/concurrency | Jitter, bounded attempts, admission control, queue limits, load tests |
+| Behavior changes weeks later | Moving alias, SDK/default change, retirement | Pin where supported; record resolved identity when exposed; recurring canaries and release-note checks |
+| Refusal becomes an answer through fallback | Safety classified as transient | Preserve policy outcomes; fallback only for approved transient classes |
+
+## What most teams get wrong
+
+1. **Model name treated as deployment identity →** record channel, endpoint/location, account, lifecycle, SDK, and configuration together.
+2. **Endpoint location treated as residency proof →** approve processing, retention, logging, and contractual controls separately.
+3. **Prompt tuning conceals regressions →** compare unchanged prompts first; version tuned experiments separately.
+4. **Fallback success counted as candidate quality →** retain candidate-only scores and report recovery independently.
+5. **Tiny eval used to claim reliability or p99 →** use it for correctness; measure rare failures and tails with appropriate traffic and uncertainty.
+
+## Productionize only when every gate has evidence
+
+- Exact identity, access, lifecycle, location, and capacity are confirmed.
+- Required media, schemas, business values, tools, safety behavior, and budgets pass assertions.
+- Paired replay through real baseline and candidate adapters passes task-level gates with recorded production configuration.
+- Processing, retention, application/provider logging, and secret-handling controls are approved.
+- Quality, safety, latency, cost, and fallback thresholds are quantitative and owner-approved.
+- Total-cost accounting includes all documented billable categories, retries, fallback, and unknown-usage reconciliation.
+- Realistic-load measurements cover streaming termination, tail latency, capacity, provider attempts, and end-to-end behavior.
+- Observability preserves outcomes without logging sensitive content by default.
+- Transient-only fallback and an automatic rollback path have evidence attached.
+- SDK, alias, and deprecation changes are reviewed through the channel’s release notes.
+
+**Productionize** when every critical gate passes. **Pilot** when uncertainty is bounded, exposure is limited, and owners approve it. **Wait** when a critical capability or control fails. Keep the current model until the deployment contract—not the announcement—earns the migration.
