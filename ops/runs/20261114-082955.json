@@ -1,0 +1,30 @@
+{
+  "run": "20261114-082955",
+  "mode": "free",
+  "usage": {
+    "calls": 2,
+    "free_calls": 1,
+    "paid_calls": 0,
+    "fallbacks": 0,
+    "prompt_tokens": 3936,
+    "completion_tokens": 8200,
+    "models": {
+      "baidu/ernie-5.5-flash-preview:free": 1
+    }
+  },
+  "posts": [
+    {
+      "topic": "T002",
+      "slug": "google-gemini-s-latest-model-a-practitioner-s-adoption-checklist",
+      "ok": false,
+      "pr": null,
+      "error": "LLMError: free[baidu/ernie-5.5-flash-preview:free\u2026]: LLMError: empty completion",
+      "scores": [],
+      "reviews": [],
+      "log": [
+        "[team-1/PM#1] brief ready: 'Google Gemini's Latest Model: A Practitioner's Adoption Checklist' [LLMs/Practitioner/Article]",
+        "[team-1/Head] team failed: LLMError: free[baidu/ernie-5.5-flash-preview:free\u2026]: LLMError: empty completion"
+      ]
+    }
+  ]
+}
