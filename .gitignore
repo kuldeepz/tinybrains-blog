@@ -13,3 +13,4 @@ __pycache__/
 *.service-account.json
 private/
 .private/
+.claude/
