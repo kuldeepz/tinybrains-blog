@@ -370,5 +370,60 @@ class TestRevisionLoop(unittest.TestCase):
         self.assertTrue(rc.prefer_paid)
 
 
+class TestRewrite(unittest.TestCase):
+    def setUp(self):
+        shutil.rmtree(TMP, ignore_errors=True)
+        (TMP / "ops").mkdir(parents=True)
+        add_ideas([{"title": "kv cache"}], "cli")
+        t = Tracker()
+        t.set(t.get("T001"), "published", slug="kv-cache-old", pr=1, url="https://x/posts/kv-cache-old/")
+        t.save()
+        posts_dir = TMP / "site" / "src" / "content" / "posts"
+        posts_dir.mkdir(parents=True)
+        (posts_dir / "kv-cache-old.mdx").write_text("---\ntitle: Old\ndate: 2026-11-13\nversion: 1\n---\n\nold body\n")
+
+    def _run(self, ids, rewrite=True):
+        fake = FakeLLM()
+        with mock.patch.object(orchestrator, "make_llm", return_value=fake):
+            return asyncio.run(orchestrator.run_write(ids, open_pr=False, build=False, rewrite=rewrite))
+
+    def test_rewrite_keeps_url_and_date_and_bumps_version(self):
+        posts = self._run(["T001"])
+        self.assertTrue(posts and posts[0].ok, posts and posts[0].error)
+        self.assertEqual(posts[0].slug, "kv-cache-old")
+        text = (TMP / "site" / "src" / "content" / "posts" / "kv-cache-old.mdx").read_text()
+        fm = __import__("yaml").safe_load(text.split("---", 2)[1])
+        self.assertEqual(str(fm["date"]), "2026-11-13")
+        self.assertEqual(fm["version"], 2)
+        self.assertIn("updated", fm)
+        self.assertIn("version", text)
+        self.assertTrue(Tracker().get("T001").get("rewriting"))
+
+    def test_write_does_not_touch_published_and_rewrite_needs_published(self):
+        self.assertEqual(self._run(["T001"], rewrite=False), [])
+        add_ideas([{"title": "something new entirely"}], "cli")
+        self.assertEqual(self._run(["T002"]), [])
+        self.assertEqual(Tracker().get("T001")["status"], "published")
+
+    def test_failed_rewrite_leaves_post_published(self):
+        class Boom(FakeLLM):
+            async def json(self, role, system, user):
+                raise RuntimeError("all models down")
+        with mock.patch.object(orchestrator, "make_llm", return_value=Boom()):
+            posts = asyncio.run(orchestrator.run_write(["T001"], open_pr=False, build=False, rewrite=True))
+        self.assertFalse(posts[0].ok)
+        t = Tracker().get("T001")
+        self.assertEqual(t["status"], "published")
+        self.assertFalse(t.get("rewriting"))
+
+    def test_rejected_rewrite_stays_published(self):
+        from agents import cli
+        t = Tracker(); topic = t.get("T001"); t.set(topic, "in_review", rewriting=True, pr=7); t.save()
+        cli.finalize(7, merged=False)
+        topic = Tracker().get("T001")
+        self.assertEqual(topic["status"], "published")
+        self.assertFalse(topic.get("rewriting"))
+
+
 if __name__ == "__main__":
     unittest.main()

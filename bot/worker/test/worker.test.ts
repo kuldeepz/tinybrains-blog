@@ -54,6 +54,15 @@ test("free text and /write dispatch to Actions", async () => {
   assert.deepEqual(d, ["message", "write"]);
 });
 
+test("/rewrite dispatches only topic ids", async () => {
+  await post(msg("/rewrite t001, please"));
+  await post(msg("/rewrite"));
+  const d = calls.filter((c) => c.url.includes("/dispatches")).map((c) => c.body.client_payload);
+  assert.equal(d.length, 1);
+  assert.equal(d[0].kind, "rewrite");
+  assert.equal(d[0].text, "T001");
+});
+
 test("approve button merges PR", async () => {
   await post({ callback_query: { id: "q", data: "approve:12", from: { id: 42 }, message: { message_id: 5, chat: { id: 42 } } } });
   assert.ok(calls.some((c) => c.url.endsWith("/pulls/12/merge") && c.method === "PUT"));

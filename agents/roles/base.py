@@ -60,6 +60,7 @@ class Post:
     error: str = ""
     pr: int | None = None
     pr_url: str = ""
+    rewrite_of: dict[str, Any] | None = None    # /rewrite: {"slug", "date", "version"} of the live post being replaced
     final_review: dict[str, Any] | None = None  # the review of the version being shipped (best round, not always the last)
 
     @property

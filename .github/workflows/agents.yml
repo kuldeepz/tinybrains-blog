@@ -9,7 +9,7 @@ on:
       command:
         description: "agents.cli command"
         type: choice
-        options: [check, write, idea, status, purge]
+        options: [check, write, rewrite, idea, status, purge]
         default: status
       args:
         description: "arguments, e.g. T001 T002  or  a topic title"
@@ -83,6 +83,7 @@ jobs:
                    else
                      python -m agents write "$ARGS"                         # a single new topic title
                    fi ;;
+            rewrite) python -m agents rewrite $(echo "$ARGS" | tr ',' ' ') ;;
             *) python -m agents "$CMD" ;;
           esac
       - name: Weekly purge

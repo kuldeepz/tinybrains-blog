@@ -15,6 +15,7 @@ const HELP = `🧠 <b>tinybrains.ai blog bot</b>
 /idea &lt;text&gt; – store an idea only (no writing)
 /ideas – list stored ideas
 /write &lt;topic | T001 T002&gt; – write now (several = parallel teams)
+/rewrite &lt;T001&gt; – rewrite a published post from scratch (same URL; old version stays live until you approve)
 /topics or /status – what's covered / pending
 /drop &lt;id&gt; – discard an idea
 📎 Send a file or image (caption optional; say "write" to write now, otherwise it's stored as an idea).
@@ -102,6 +103,12 @@ async function handle(update: any, env: Env): Promise<void> {
       if (!c.arg) return send(env, "Usage: /write &lt;topic&gt; or /write T001 T002");
       await dispatch(env, { kind: "write", text: c.arg, chat_id: msg.chat.id, message_id: msg.message_id });
       return send(env, "🚀 Assembling the team… I'll post progress here.");
+    }
+    case "rewrite": {
+      const ids = (c.arg.toUpperCase().match(/T\d+/g) ?? []);
+      if (!ids.length) return send(env, "Usage: /rewrite T001 (a published topic id; see /topics)");
+      await dispatch(env, { kind: "rewrite", text: ids.join(" "), chat_id: msg.chat.id, message_id: msg.message_id });
+      return send(env, `♻️ Rewriting ${ids.join(", ")} from scratch. The live version stays up until you approve the new one.`);
     }
     default:
       await dispatch(env, { kind: "message", text, chat_id: msg.chat.id, message_id: msg.message_id });

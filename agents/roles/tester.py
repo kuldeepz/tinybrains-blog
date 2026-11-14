@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import subprocess
 from datetime import date
 
 import yaml
@@ -91,7 +92,7 @@ def frontmatter(post: Post) -> str:
     fm = {
         "title": m.get("title") or b.get("title"),
         "description": (m.get("description") or "")[:200],
-        "date": date.today(),
+        "date": (post.rewrite_of or {}).get("date") or date.today(),
         "topic": b.get("topic", "LLMs"),
         "level": b.get("level", "Practitioner"),
         "type": b.get("type", "Article"),
@@ -102,8 +103,11 @@ def frontmatter(post: Post) -> str:
         "sources": post.sources,
         "author": AUTHOR,
         "draft": False,
-        "version": 1,
+        "version": int((post.rewrite_of or {}).get("version") or 0) + 1,
     }
+    if post.rewrite_of:
+        fm = {**fm, "updated": date.today()}
+        fm = {k: fm[k] for k in ["title", "description", "date", "updated"] + [k for k in fm if k not in ("title", "description", "date", "updated")]}
     return "---\n" + yaml.safe_dump(fm, sort_keys=False, allow_unicode=True, width=1000) + "---\n\n"
 
 
@@ -136,6 +140,9 @@ def remove_files(post: Post) -> None:
     for x in [POSTS_DIR / f"{post.slug}.mdx", COVERS_DIR / f"{post.slug}.svg",
               *[SITE / "public" / "diagrams" / n for n in post.diagrams]]:
         x.unlink(missing_ok=True)
+    if post.rewrite_of:  # a rewrite replaced files of a live post: put the committed versions back
+        live = [str(x.relative_to(SITE.parent)) for x in (POSTS_DIR / f"{post.slug}.mdx", COVERS_DIR / f"{post.slug}.svg")]
+        subprocess.run(["git", "-C", str(SITE.parent), "checkout", "-q", "HEAD", "--", *live], capture_output=True)
 
 
 async def build_site() -> tuple[bool, str]:

@@ -4,6 +4,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+
+import yaml
 from datetime import datetime, timezone
 
 from . import gitops
@@ -20,7 +22,7 @@ from .roles.publisher import Publisher
 from .roles.reviewer import Reviewer
 from .roles.tester import Tester, build_site, remove_files, style_issues, write_files
 from .roles.writer import Researcher, Writer
-from .settings import MAX_PARALLEL, MAX_REVIEW_ROUNDS, RUNS_DIR, ROOT
+from .settings import MAX_PARALLEL, MAX_REVIEW_ROUNDS, POSTS_DIR, RUNS_DIR, ROOT
 from .telegram import Telegram, esc
 from .topics import Tracker
 
@@ -69,7 +71,19 @@ async def team_pipeline(llm: LLM, post: Post, published: list[dict], tg: Telegra
     return post
 
 
-async def run_write(topic_ids: list[str], *, open_pr: bool = True, build: bool = True) -> list[Post]:
+def _live_frontmatter(slug: str) -> dict:
+    """date/version of the live post, so a rewrite keeps its original date and bumps the version."""
+    f = POSTS_DIR / f"{slug}.mdx"
+    if not slug or not f.exists():
+        return {}
+    try:
+        fm = yaml.safe_load(f.read_text().split("---", 2)[1]) or {}
+    except Exception:  # noqa: BLE001
+        return {}
+    return {"date": fm.get("date"), "version": fm.get("version", 1)}
+
+
+async def run_write(topic_ids: list[str], *, open_pr: bool = True, build: bool = True, rewrite: bool = False) -> list[Post]:
     llm, tg, drive = make_llm(), Telegram(), Drive()
     head = Head(llm)
 
@@ -77,14 +91,22 @@ async def run_write(topic_ids: list[str], *, open_pr: bool = True, build: bool =
         out = []
         for tid in topic_ids:
             topic = t.get(tid)
-            if topic and topic["status"] in ("idea", "queued", "rejected", "in_progress"):
+            if not topic:
+                continue
+            if rewrite:
+                if topic["status"] == "published" or (topic["status"] == "in_progress" and topic.get("rewriting")):
+                    t.set(topic, "in_progress", rewriting=True)
+                    out.append(dict(topic))
+            elif topic["status"] in ("idea", "queued", "rejected", "in_progress") and not topic.get("rewriting"):
                 t.set(topic, "in_progress")
                 out.append(dict(topic))
-        return out, [dict(p) for p in t.by_status("published")]
+        mine = {o["id"] for o in out}
+        return out, [dict(p) for p in t.by_status("published") if p["id"] not in mine]
 
     topics, published = gitops.sync_tracker(start, f"tracker: start {', '.join(topic_ids)}")
     if not topics:
-        tg.send("Nothing to write: those topics are unknown or already in review/published.")
+        tg.send("Nothing to rewrite: /rewrite only works on published topics (see /topics)." if rewrite
+                else "Nothing to write: those topics are unknown or already in review/published.")
         return []
     mode = "free"
     if llm.approver is not None:
@@ -95,7 +117,10 @@ async def run_write(topic_ids: list[str], *, open_pr: bool = True, build: bool =
     posts = []
     for n, topic in enumerate(topics, 1):
         ctx = await load_private_context(drive, llm, topic) if topic.get("private_files") else ""
-        posts.append(Post(topic=topic, team=f"team-{n}", context=ctx))
+        post = Post(topic=topic, team=f"team-{n}", context=ctx)
+        if topic.get("rewriting"):
+            post.rewrite_of = {"slug": topic.get("slug"), **_live_frontmatter(topic.get("slug", ""))}
+        posts.append(post)
     await gather_limited(MAX_PARALLEL, [team_pipeline(llm, p, published, tg, mode) for p in posts])
 
     # dedupe slugs between parallel teams
@@ -153,6 +178,8 @@ async def run_write(topic_ids: list[str], *, open_pr: bool = True, build: bool =
             if p.ok and (p.pr or not open_pr):
                 t.set(topic, "in_review" if p.pr else "in_progress", slug=p.slug, pr=p.pr,
                       title=p.meta.get("title") or topic["title"])
+            elif topic.get("rewriting"):   # failed rewrite: the live post stays as it is
+                t.set(topic, "published", rewriting=False)
             else:
                 t.set(topic, "idea", notes=(topic.get("notes", "") + f"\n[last run failed: {p.error[:150]}]").strip()[:1000])
 

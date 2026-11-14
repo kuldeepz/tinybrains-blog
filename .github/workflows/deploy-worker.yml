@@ -132,6 +132,7 @@ jobs:
                  {"command":"idea","description":"Store an idea only (no writing)"},
                  {"command":"ideas","description":"List stored ideas"},
                  {"command":"write","description":"Write now: topic or ids, e.g. T001 T002"},
+                 {"command":"rewrite","description":"Rewrite a published post, e.g. /rewrite T001"},
                  {"command":"topics","description":"Covered vs pending topics"},
                  {"command":"status","description":"Progress summary"},
                  {"command":"drop","description":"Discard an idea, e.g. /drop T003"}]'

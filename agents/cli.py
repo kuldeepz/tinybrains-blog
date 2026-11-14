@@ -74,6 +74,14 @@ async def handle_event(payload: dict) -> None:
         await write_from_text(text, tg)
         return
 
+    if kind == "rewrite":
+        ids = [w.upper() for w in re.split(r"[\s,]+", text) if ID_RE.match(w)]
+        if not ids:
+            tg.send("Usage: /rewrite T001 (a published topic id; see /topics)")
+            return
+        await run_write(ids, rewrite=True)
+        return
+
     if kind == "upload":
         f = payload["file"]
         tg.typing()
@@ -123,8 +131,11 @@ def finalize(pr: int, merged: bool) -> None:
         topic = t.by_pr(pr)
         if not topic:
             return
+        holder["rewrite"] = bool(topic.get("rewriting"))
         if merged:
-            t.set(topic, "published", url=f"{SITE_URL}/posts/{topic['slug']}/")
+            t.set(topic, "published", url=f"{SITE_URL}/posts/{topic['slug']}/", rewriting=False)
+        elif holder["rewrite"]:   # rejected rewrite: the previous version stays live
+            t.set(topic, "published", rewriting=False)
         else:
             t.set(topic, "rejected")
         holder.update(topic)
@@ -133,7 +144,11 @@ def finalize(pr: int, merged: bool) -> None:
     if not holder:
         return
     purged = drive.delete_path(f"uploads/{holder['id']}") if holder.get("private_files") else False
-    if merged:
+    if merged and holder["rewrite"]:
+        tg.send(f"🎉 Rewrite published: <b>{esc(holder['title'])}</b>\n{holder['url']}\n(same URL, live in ~2 min)")
+    elif holder["rewrite"]:
+        tg.send(f"↩️ Rewrite of {holder['id']} discarded; the current version stays live. /rewrite {holder['id']} to try again.")
+    elif merged:
         tg.send(f"🎉 Published <b>{esc(holder['title'])}</b>\n{holder['url']}\n(live in ~2 min once Pages deploys)"
                 + ("\n🧹 Private uploads deleted from Drive." if purged else ""))
     else:
@@ -142,7 +157,7 @@ def finalize(pr: int, merged: bool) -> None:
 
 
 async def check_models() -> int:
-    """Ping every configured model with a tiny prompt (a fraction of a cent on Azure). Names stay out of the report."""
+    """Ping every configured model with a tiny prompt (a fraction of a cent on paid models). Names stay out of the report."""
     from .llm import AZURE_TIERS, LLM, azure_deployment, load_role
     import yaml
     from .settings import MODELS_FILE
@@ -154,7 +169,7 @@ async def check_models() -> int:
     for label, tier in tiers.items():
         own = env(AZURE_TIERS[tier][0])
         if not llm._az or not azure_deployment(tier):
-            lines.append(f"⚪ Azure {label}: not configured"); ok = ok and tier != "mini"; continue
+            lines.append(f"⚪ Paid {label}: not configured"); ok = ok and tier != "mini"; continue
         kw = dict(model=azure_deployment(tier), messages=msgs, max_completion_tokens=4000, reasoning_effort="low")
         try:
             try:
@@ -165,10 +180,10 @@ async def check_models() -> int:
                 kw.pop("reasoning_effort"); r = await llm._az.chat.completions.create(**kw)
             reply = (r.choices[0].message.content or "").strip()[:20]
             note = "" if own else " (using the mini deployment)"
-            lines.append(f"✅ Azure {label}: replied '{esc(reply)}'{note}")
+            lines.append(f"✅ Paid {label}: replied '{esc(reply)}'{note}")
         except Exception as e:
             ok = False
-            lines.append(f"❌ Azure {label}: {esc(type(e).__name__)}: {esc(str(e)[:200])}")
+            lines.append(f"❌ Paid {label}: {esc(type(e).__name__)}: {esc(str(e)[:200])}")
     free = []
     for rc in yaml.safe_load(MODELS_FILE.read_text())["roles"]:
         for m in load_role(rc).free:
@@ -202,6 +217,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("check")
     w = sub.add_parser("write"); w.add_argument("items", nargs="+"); w.add_argument("--no-pr", action="store_true")
     w.add_argument("--no-build", action="store_true")
+    rw = sub.add_parser("rewrite"); rw.add_argument("ids", nargs="+")
     e = sub.add_parser("event"); e.add_argument("payload")
     f = sub.add_parser("finalize"); f.add_argument("--pr", type=int, required=True); f.add_argument("--merged", default="true")
     p = sub.add_parser("purge"); p.add_argument("--days", type=int, default=int(env("TB_CONV_RETENTION_DAYS", "7")))
@@ -220,6 +236,10 @@ def main(argv: list[str] | None = None) -> int:
         if titles:
             ids += [t["id"] for t, _ in add_ideas([{"title": x} for x in titles], "cli", status="queued")]
         posts = asyncio.run(run_write(ids, open_pr=not args.no_pr, build=not args.no_build))
+        print(Head.summary(posts))
+        return 0 if posts and all(p.ok for p in posts) else 1
+    elif args.cmd == "rewrite":
+        posts = asyncio.run(run_write([i.upper() for i in args.ids], rewrite=True))
         print(Head.summary(posts))
         return 0 if posts and all(p.ok for p in posts) else 1
     elif args.cmd == "event":

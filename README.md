@@ -27,6 +27,7 @@ Approve ─▶ Worker merges PR ─▶ pages.yml deploys site; finalize.yml mark
 | "save this for later: …" | Same: the router treats store/save/later as **store only** |
 | `/write T003` or `/write KV cache quantization` | One lean team writes it |
 | `/write T003 T007 T009` or several topics in one message | One team per topic, run in parallel (up to `TB_MAX_PARALLEL`, default 4) |
+| `/rewrite T001` | Rewrites a published post from scratch at the same URL (keeps its date, adds "updated", bumps the version). The old version stays live until you approve; ❌ discards the rewrite |
 | a file or image (+ optional caption) | Saved privately to Drive, read (text/PDF/code; images via a vision model) and turned into an idea. Put "write" in the caption to write it now |
 | `/topics`, `/status`, `/ideas` | What's covered, in review, in progress, and pending |
 | `/drop T004` | Discard an idea |
