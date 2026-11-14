@@ -36,15 +36,15 @@
     },
     {
       "id": "T002",
-      "title": "Google Gemini's latest model",
+      "title": "What to Verify Before Adopting Google's Latest Gemini Model",
       "notes": "Cover the latest Google Gemini model referenced in the request. Do not invent version names, benchmark numbers, pricing, availability, or capabilities.\n[last run failed: LLMError: free[baidu/ernie-5.5-flash-preview:free…]: LLMError: empty completion]\n[last run failed: LLMError: free[baidu/ernie-5.5-flash-preview:free…]: LLMError: empty completion]\n[last run failed: LLMError: free[baidu/ernie-5.5-flash-preview:free]: LLMError: empty completion; free[nvidia/nemotron-3.5-super-vl:free]: LLMError: empty completion]",
-      "status": "in_progress",
+      "status": "in_review",
       "tags": [],
       "source": "telegram",
       "created": "2026-11-14T08:17:10Z",
-      "updated": "2026-11-14T13:31:05Z",
-      "slug": null,
-      "pr": null,
+      "updated": "2026-11-14T13:39:00Z",
+      "slug": "what-to-verify-before-adopting-google-s-latest-gemini-model",
+      "pr": 2,
       "url": null,
       "private_files": false,
       "history": [
@@ -79,6 +79,10 @@
         {
           "at": "2026-11-14T13:31:05Z",
           "status": "in_progress"
+        },
+        {
+          "at": "2026-11-14T13:39:00Z",
+          "status": "in_review"
         }
       ]
     },

@@ -1,0 +1,114 @@
+{
+  "run": "20261114-133900",
+  "mode": "senior",
+  "usage": {
+    "calls": 11,
+    "free_calls": 1,
+    "paid_calls": 10,
+    "fallbacks": 0,
+    "prompt_tokens": 79966,
+    "completion_tokens": 31830,
+    "models": {
+      "baidu/ernie-5.5-flash-preview:free": 1,
+      "azure:gpt-5.4-mini": 4,
+      "azure:gpt-6.1-sol": 6
+    }
+  },
+  "posts": [
+    {
+      "topic": "T002",
+      "slug": "what-to-verify-before-adopting-google-s-latest-gemini-model",
+      "ok": true,
+      "pr": 2,
+      "error": "",
+      "scores": [
+        6,
+        8,
+        8
+      ],
+      "reviews": [
+        {
+          "score": 6,
+          "rubric": {
+            "insight": 9,
+            "correctness": 4,
+            "tradeoffs": 9,
+            "actionability": 6,
+            "voice": 8,
+            "structure": 7,
+            "code": 2
+          },
+          "issues": [
+            "Replace `timeout=REQUEST_TIMEOUT_S` inside `types.GenerateContentConfig(...)` with the official SDK's documented HTTP timeout configuration. Verify the exact HttpOptions placement and units against current official client documentation; HTTP timeout values use milliseconds, so do not pass the seconds constant unchanged. Add the installation command `pip install google-genai` and a client-documentation source without inventing a version pin.",
+            "Replace `last_error = type(exc).__name__` as the retry eligibility test. Catch the SDK's documented API exceptions, inspect their status-code field, and separately handle documented transport timeout exceptions. Keep an error-class field for telemetry, but do not use class names as HTTP codes. Propagate unexpected programming/configuration errors rather than silently converting them into fallback results.",
+            "Replace `if text is None:` as the fallback condition with an explicit eligible-transient outcome. Authentication failures, invalid requests, safety refusals, and policy blocks must not trigger automatic fallback. Record blocked, empty, and other non-success responses as distinct outcomes rather than treating `resp.text or \"\"` as an undifferentiated result.",
+            "Rewrite `deadline = time.time() + TOTAL_DEADLINE_S` around one monotonic deadline shared by primary attempts, backoff, and fallback. Before each operation, compute the remaining budget; cap request timeout and sleep to it, and decline fallback when exhausted. Verify and explicitly control SDK retries so application retries do not multiply them.",
+            "Replace the claim that the example \"logs per-attempt metadata\" by actually emitting one record per attempt. Include attempt index, model, attempt latency, usage or null, error code/class, outcome, and fallback status. Preserve the primary result instead of overwriting `meta`; add separate end-to-end latency and configured pricing inputs. Log no raw prompts, outputs, or secrets by default.",
+            "Replace the current `main()` loop with a compact paired evaluation: run baseline and candidate independently on every JSONL case, score both using a supplied expected value or deterministic task-specific predicate, and report candidate-only pass rate, baseline pass rate, and baseline-pass/candidate-fail regressions. Evaluate fallback recovery separately so it cannot change candidate-only scores. Provide a tiny valid JSONL example and environment/run instructions. Keep the main Python example approximately 90 lines.",
+            "Delete or rewrite: \"This example uses the documented official Python client shape ... logs per-attempt metadata, bounds retries and deadline.\" After repairing the code, describe only behavior the implementation actually provides. Do not claim execution or verification that is not supported by the research.",
+            "Extend \"Run the smallest tests that can fail in meaningful ways\" into a compact test/assertion table. Include supported and unsupported media, valid and invalid schema requests, business-value validation, deterministic tool name and argument checks, blocked/empty responses, boundary input and output budgets, and stream termination. Distinguish documented unsupported behavior from a migration regression.",
+            "Change `| Claim | Official source | Exact deployment | Verification result |` to include verification date and evidence artifact. Link Vertex model claims to https://cloud.google.com/vertex-ai/generative-ai/docs/models/gemini. Replace \"Use Vertex quotas for request and token limits\" with channel-specific guidance: check Gemini API limits in its official documentation/account configuration and Vertex limits in the Vertex quota documentation.",
+            "Extend the cost formula with: \"This covers input/output token charges only; add other documented billable categories for the selected model and channel, plus retries and fallback.\" Keep absent usage unknown. State that the retry arithmetic assumes one retry after an eligible transient failure and is not a peak-load model; correlated outages require load testing."
+          ]
+        },
+        {
+          "score": 8,
+          "rubric": {
+            "insight": 9,
+            "correctness": 8,
+            "tradeoffs": 9,
+            "actionability": 8,
+            "voice": 9,
+            "structure": 9,
+            "code": 8
+          },
+          "issues": [
+            "Change the assertion 'Policy blocks, refusals, empty responses, and other non-success outcomes remain distinct' and the code branch 'r[\"outcome\"] = \"success\" if r[\"text\"].strip() else \"empty\"'. Name that branch 'completed_text', then score task success separately. Explicitly state that textual refusals require task-level labeling or judging; finish metadata alone does not identify every refusal. Preserve the existing rule that these responses do not trigger transient fallback.",
+            "Clarify the scope beside 'Report baseline pass rate, candidate-only pass rate, and baseline-pass/candidate-fail regressions.' State that the supplied script compares bare text calls under a shared smoke configuration, not the complete production integration. Before migration, require a second replay through the real baseline and candidate adapters with recorded system instructions, tools, schemas, safety settings, and generation configuration. Label the script's summary metrics as smoke metrics so they cannot be mistaken for migration gates.",
+            "Before retaining 'Its timeout uses milliseconds, not seconds' and 'HttpRetryOptions(attempts=1) so each application attempt makes one SDK attempt', verify these statements against the linked official references and record the check date and installed SDK version in the publication evidence. Also confirm exception behavior for the synchronous transport used here. Do not introduce an arbitrary version pin or claim execution without supporting evidence.",
+            "Compact the main example to approximately 90 lines by removing the unused PRICING_JSON pass-through and redundant summary or record-construction boilerplate; keep pricing inputs in a run manifest instead. Pass a non-sensitive case ID and run ID into every attempt record, and preserve model/channel/configuration identity in that manifest. Retain independent candidate scoring, bounded retries, transient-only fallback, usage accounting, and the wall-clock timeout caveat."
+          ]
+        },
+        {
+          "score": 8,
+          "rubric": {
+            "insight": 9,
+            "correctness": 8,
+            "tradeoffs": 9,
+            "actionability": 8,
+            "voice": 9,
+            "structure": 8,
+            "code": 8
+          },
+          "issues": [
+            "Expand 'Run the smallest tests that can fail in meaningful ways' with two explicit checklist rows: a declared deterministic tool whose name and arguments are validated without executing side effects, and supported safety-setting configurations whose documented acceptance and workload-level refusal behavior are checked. Include observed results and evidence references for both.",
+            "Change the configuration around 'Create a run manifest with confirmed, credential-free generateContent URLs for both models.' Configure one authoritative model identifier and construct the request URL from that identifier using the documented REST route, or validate that the configured URL targets exactly that identifier before any request. Record a returned model version separately when the API exposes one; do not imply that the configured ID proves resolved serving identity.",
+            "For 'TRANSIENT', 'BLOCKED', 'generationConfig', 'usageMetadata', and the response parsing branches, verify the exact request and response contract against current official generateContent documentation and link that primary reference beside the example. Review finish reasons explicitly; preserve unrecognized finish reasons in telemetry rather than collapsing them into an unexplained 'other' outcome.",
+            "Replace 'time.sleep(min(random.uniform(0.2, 0.4), ...))' with bounded backoff that honors valid provider retry guidance when supplied. If the suggested delay exceeds the remaining operation budget, stop rather than retrying early. State that a fallback sharing the same exhausted quota pool may not provide independent recovery.",
+            "Replace 'emit({\"kind\": \"run_manifest\", **manifest})' with an allow-listed telemetry manifest. Emit configuration hashes or artifact references for system instructions, tool descriptions, and schemas rather than their raw contents. Update 'Prompts and outputs stay in memory rather than entering the emitted records' to describe the actual logging boundary precisely.",
+            "Condense the implementation section to one approximately 90-line example and a short setup block. Consolidate 'smoke metrics, not migration gates', the production-adapter boundary, and the synchronous-timeout caveat into one concise explanation. Retain the candidate-only versus fallback distinction and the deadline limitation; remove repeated scaffolding rather than adding more prose."
+          ]
+        }
+      ],
+      "log": [
+        "[team-1/PM#1] brief ready: 'What to Verify Before Adopting Google's Latest Gemini Model' [LLMs/Practitioner/Article]",
+        "[team-1/Researcher#1] research done, 8 sources",
+        "[team-1/Architect#1] architect brief ready (1251 words)",
+        "[team-1/Writer#1] draft written (2040 words)",
+        "[team-1/Editor#1] edit pass done",
+        "[team-1/Designer#1] layout pass done, cover generated, 0 diagram(s)",
+        "[team-1/Reviewer#1] score 6/10 -> changes requested",
+        "[team-1/Tester#1] static checks passed",
+        "[team-1/Editor#1] revised per review",
+        "[team-1/Reviewer#1] score 8/10 -> changes requested",
+        "[team-1/Tester#1] static checks passed",
+        "[team-1/Editor#1] revised per review",
+        "[team-1/Reviewer#1] score 8/10 -> changes requested",
+        "[team-1/Tester#1] static checks passed",
+        "[team-1/Head] review rounds exhausted (score 8); sending to owner with notes",
+        "[team-1/Tester#1] static checks passed",
+        "[team-1/Publisher] PR #2 opened"
+      ]
+    }
+  ]
+}
