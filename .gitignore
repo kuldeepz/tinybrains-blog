@@ -12,3 +12,4 @@ __pycache__/
 # never commit private material
 *.service-account.json
 private/
+.private/
