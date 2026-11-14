@@ -13,7 +13,9 @@ class PM(Agent):
 
     async def plan(self, post: Post, published: list[dict]) -> None:
         pub = "\n".join(f"- {p['title']} ({p.get('url') or p.get('slug')})" for p in published[-60:]) or "(none yet)"
-        user = f"""Topic request: {post.topic['title']}
+        redo = ("This is a FULL REWRITE of a post that is already live at the same URL. Plan it from scratch at the senior bar; "
+                "do not mirror the old structure. Keep the same subject.\n") if post.rewrite_of else ""
+        user = f"""{redo}Topic request: {post.topic['title']}
 Owner notes: {post.topic.get('notes') or '-'}
 Private source material provided by the owner (summarise/use, do not quote personal details):
 {post.context[:12000] or '-'}
@@ -45,5 +47,5 @@ Return JSON: {{
             b["type"] = "Article"
         b["title"] = (b.get("title") or post.topic["title"]).strip()
         post.brief = b
-        post.slug = slugify(b["title"])
+        post.slug = post.rewrite_of["slug"] if post.rewrite_of else slugify(b["title"])  # rewrites keep their URL
         post.note(self.name, f"brief ready: '{b['title']}' [{b['topic']}/{b['level']}/{b['type']}]")
