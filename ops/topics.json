@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "next_id": 4,
+  "next_id": 5,
   "topics": [
     {
       "id": "T001",
@@ -115,6 +115,26 @@
         },
         {
           "at": "2026-11-14T08:17:57Z",
+          "status": "idea"
+        }
+      ]
+    },
+    {
+      "id": "T004",
+      "title": "how transformers work for embedding",
+      "notes": "",
+      "status": "idea",
+      "tags": [],
+      "source": "telegram",
+      "created": "2026-11-16T12:25:45Z",
+      "updated": "2026-11-16T12:25:45Z",
+      "slug": null,
+      "pr": null,
+      "url": null,
+      "private_files": false,
+      "history": [
+        {
+          "at": "2026-11-16T12:25:45Z",
           "status": "idea"
         }
       ]
