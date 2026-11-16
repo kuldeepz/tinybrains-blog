@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 480" role="img" aria-label="Diagram showing how positional encoding affects embeddings and why usable length depends on retrieval evidence, not token limit">
+  <rect width="800" height="480" fill="#0B0C10"/>
+  <defs>
+    <linearGradient id="g1" x1="120" y1="120" x2="680" y2="360" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#7C5CFF" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#22D3EE" stop-opacity="0.95"/>
+    </linearGradient>
+  </defs>
+
+  <text x="40" y="44" fill="#E6E8EE" font-family="Geist, ui-sans-serif, sans-serif" font-size="22" font-weight="600">Positional encoding changes what the embedding represents</text>
+  <text x="40" y="72" fill="#A7AFBF" font-family="Geist, ui-sans-serif, sans-serif" font-size="14">The limit in config is not the same as the length your retrieval stack can defend.</text>
+
+  <rect x="48" y="130" rx="18" ry="18" width="190" height="86" fill="#11131A" stroke="#7C5CFF" stroke-width="2"/>
+  <text x="143" y="161" fill="#E6E8EE" text-anchor="middle" font-family="Geist, ui-sans-serif, sans-serif" font-size="16" font-weight="600">Input tokens</text>
+  <text x="143" y="184" fill="#A7AFBF" text-anchor="middle" font-family="Geist, ui-sans-serif, sans-serif" font-size="13">prefix + content + tail</text>
+
+  <rect x="293" y="130" rx="18" ry="18" width="214" height="86" fill="#11131A" stroke="#22D3EE" stroke-width="2"/>
+  <text x="400" y="161" fill="#E6E8EE" text-anchor="middle" font-family="Geist, ui-sans-serif, sans-serif" font-size="16" font-weight="600">Position enters model</text>
+  <text x="400" y="184" fill="#A7AFBF" text-anchor="middle" font-family="Geist, ui-sans-serif, sans-serif" font-size="13">input embeddings or attention</text>
+
+  <rect x="562" y="130" rx="18" ry="18" width="190" height="86" fill="#11131A" stroke="#7C5CFF" stroke-width="2"/>
+  <text x="657" y="161" fill="#E6E8EE" text-anchor="middle" font-family="Geist, ui-sans-serif, sans-serif" font-size="16" font-weight="600">Final vector</text>
+  <text x="657" y="184" fill="#A7AFBF" text-anchor="middle" font-family="Geist, ui-sans-serif, sans-serif" font-size="13">pooled, normalized, searched</text>
+
+  <path d="M238 173 H285" stroke="url(#g1)" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+  <path d="M507 173 H554" stroke="url(#g1)" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+
+  <line x1="98" y1="292" x2="702" y2="292" stroke="#2B2F3A" stroke-width="2"/>
+
+  <rect x="76" y="318" rx="14" ry="14" width="124" height="66" fill="#121521" stroke="#7C5CFF" stroke-width="1.5"/>
+  <text x="138" y="346" fill="#E6E8EE" text-anchor="middle" font-family="Geist, ui-sans-serif, sans-serif" font-size="14" font-weight="600">512-token cap</text>
+  <text x="138" y="367" fill="#A7AFBF" text-anchor="middle" font-family="Geist, ui-sans-serif, sans-serif" font-size="12">may clip tail facts</text>
+
+  <rect x="238" y="318" rx="14" ry="14" width="124" height="66" fill="#121521" stroke="#22D3EE" stroke-width="1.5"/>
+  <text x="300" y="346" fill="#E6E8EE" text-anchor="middle" font-family="Geist, ui-sans-serif, sans-serif" font-size="14" font-weight="600">Truncation sweep</text>
+  <text x="300" y="367" fill="#A7AFBF" text-anchor="middle" font-family="Geist, ui-sans-serif, sans-serif" font-size="12">measure cosine drift</text>
+
+  <rect x="400" y="318" rx="14" ry="14" width="124" height="66" fill="#121521" stroke="#7C5CFF" stroke-width="1.5"/>
+  <text x="462" y="346" fill="#E6E8EE" text-anchor="middle" font-family="Geist, ui-sans-serif, sans-serif" font-size="14" font-weight="600">Recall@k</text>
+  <text x="462" y="367" fill="#A7AFBF" text-anchor="middle" font-family="Geist, ui-sans-serif, sans-serif" font-size="12">checks ranking quality</text>
+
+  <rect x="562" y="318" rx="14" ry="14" width="124" height="66" fill="#121521" stroke="#22D3EE" stroke-width="1.5"/>
+  <text x="624" y="346" fill="#E6E8EE" text-anchor="middle" font-family="Geist, ui-sans-serif, sans-serif" font-size="14" font-weight="600">Index version</text>
+  <text x="624" y="367" fill="#A7AFBF" text-anchor="middle" font-family="Geist, ui-sans-serif, sans-serif" font-size="12">freeze the contract</text>
+
+  <path d="M200 351 H230" stroke="#7C5CFF" stroke-width="2"/>
+  <path d="M362 351 H392" stroke="#22D3EE" stroke-width="2"/>
+  <path d="M524 351 H554" stroke="#7C5CFF" stroke-width="2"/>
+
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L10,5 L0,10 z" fill="#22D3EE"/>
+    </marker>
+  </defs>
+</svg>
