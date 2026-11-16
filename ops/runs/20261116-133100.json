@@ -1,0 +1,117 @@
+{
+  "run": "20261116-133100",
+  "mode": "senior",
+  "usage": {
+    "calls": 11,
+    "free_calls": 1,
+    "paid_calls": 10,
+    "fallbacks": 0,
+    "prompt_tokens": 91534,
+    "completion_tokens": 40110,
+    "models": {
+      "baidu/ernie-5.5-flash-preview:free": 1,
+      "paid:mini": 4,
+      "paid:architect": 6
+    }
+  },
+  "posts": [
+    {
+      "topic": "T005",
+      "slug": "positional-encoding-in-embedding-models-why-512-tokens-is-a-design-cho",
+      "ok": true,
+      "pr": 4,
+      "error": "",
+      "scores": [
+        6,
+        8,
+        8
+      ],
+      "reviews": [
+        {
+          "score": 6,
+          "rubric": {
+            "insight": 8,
+            "correctness": 4,
+            "tradeoffs": 6,
+            "actionability": 5,
+            "voice": 8,
+            "structure": 7,
+            "code": 2
+          },
+          "issues": [
+            "Replace the reference logic beginning with 'ref_budget = min(consumed, max(budgets))'. Establish the largest supported total-token budget for the actual deployed pipeline, then construct a same-model reference whose final input length is verified immediately before forward execution. If the document exceeds that length, explicitly label the result 'maximum-supported-prefix similarity' and report reference coverage. Do not present it as full-document fidelity.",
+            "Replace the decode/re-tokenize path and delete 'That probe preserves prefixes and special tokens by round-tripping through the tokenizer output'. Tokenize the role prefix and content using the checkpoint's actual input convention, reserve special-token space, and build input tensors without decoding them back into text. Verify prefix retention, attention masks, final sequence length, and wrapper/model limits for each requested budget. Report tokenized length separately from model-consumed length.",
+            "Fix the order probe around 'for label, x in ...'. Encode the correctly prefixed baseline sentence a once and compare b and c against that baseline, not ref_vec. Use a meaning-changing control close to the baseline, such as changing the expiry date or negating the approval requirement. Replace 'If swapping two clauses changes the vector a lot, the model is meaning-sensitive' with guidance that a large change under a meaning-preserving reorder can indicate unwanted order sensitivity; interpret it against the control and retrieval labels.",
+            "Replace the single-sample padding calls with a genuinely padded test: use the same short target sentence alongside a longer sample in one bounded batch, or explicitly pad identical real-token sequences to a fixed length. Compare the target embedding under left and right padding through the same pooling pipeline, retaining correct masks and inspecting position IDs and real-token selection. Restore tokenizer state and use evaluation/inference mode explicitly.",
+            "Replace 'Keep the prefix byte-identical between indexing and query time' and the corresponding Monday-checklist item with: preserve the checkpoint's documented role-specific query and document templates, and freeze each independently. Use the documented document prefix for the truncation probe and query prefixes for query examples. Explain that adding a prefix introduces attended content and is not a pure global position shift.",
+            "Replace 'If the table has 512 entries, index 513 is undefined' with the zero-based boundary: valid position IDs are 0 through 511. Rewrite the following behavior claim to distinguish tokenizer/wrapper truncation before forward execution from an actual out-of-range position lookup, which normally fails unless the architecture or position handling has been modified. Scope the minimum-limit heuristic to applicable absolute-position pipelines and explain tokenizer sentinel values.",
+            "Expand or replace the family table with the architect's decision-oriented structure: insertion point, architectural/training boundary, pooling/chunking consequence, and when to choose. Include T5 bucketed relative bias separately from ALiBi within the attention-bias family; explain bucket saturation versus linear distance penalties. Add the RoPE relative-distance identity or an equally precise mechanism explanation.",
+            "Replace 'Mean pooling is the most stable for bidirectional encoders' with checkpoint-specific guidance: retain the pooling used during embedding training unless an evaluated adaptation supports changing it. Explain mean-pooling length dilution, CLS training dependence, and causal last-token selection without claiming an architecture-wide winner.",
+            "Turn the E5 and GTE examples into verified worked inspections using their actual primary config files, model cards, and Sentence Transformers module metadata where applicable. State exact verified limits and pooling behavior, or remove unsupported specifics. Add install instructions and record package versions plus a resolved model revision without inventing version pins. Avoid assuming model[1] is universally the pooling module.",
+            "Strengthen 'RoPE extension changes the embedding contract' by distinguishing position interpolation, frequency adjustment, and YaRN rather than grouping them into a blanket trade-off claim. State that retrieval gains and short-context regressions require embedding-specific evaluation. Explain that affected caches require recomputation because key rotations change and deeper contextual states, including values, can change. Add the real internal KV-cache link."
+          ]
+        },
+        {
+          "score": 8,
+          "rubric": {
+            "insight": 9,
+            "correctness": 9,
+            "tradeoffs": 9,
+            "actionability": 8,
+            "voice": 9,
+            "structure": 8,
+            "code": 8
+          },
+          "issues": [
+            "After 'A checkpoint-specific inspection should record the resolved model revision...', add compact worked examples for E5-base-v2 and GTE-Qwen2-1.5B-instruct. Verify their actual configs and model cards before stating values. Link directly to those artifacts and show the positional scheme, configured limit, pooling convention, and role-specific input requirements. Replace generic inspection prose rather than expanding the overall length.",
+            "Change the code contract following 'a conventional BERT absolute-position Sentence Transformer with prefix-only role templates' to explicitly require trained mean pooling. Inspect the Pooling module and reject CLS, last-token, max, or mixed pooling modes for this probe. Explain that this restriction prevents left-padding results from being dominated by first-array-position CLS selection.",
+            "Address prompt exclusion before 'return F.normalize(model(...)'. Either reject checkpoints whose pooling excludes prompt tokens, or reproduce the checkpoint's documented prompt-length metadata correctly. State explicitly that the direct forward path does not automatically reproduce encode-time prompt processing.",
+            "Replace 'Set MODEL_ID, DOC_PREFIX, and QUERY_PREFIX from the selected checkpoint\u2019s model card' with one concrete, source-verified supported configuration, while retaining environment-based overrides and revision recording. Ensure the example checkpoint satisfies the mean-pooling and prompt-handling checks.",
+            "Reduce the main code block to at most 90 lines by specializing it to the verified supported pipeline and trimming redundant diagnostics. Preserve reference coverage, final masks and position checks, semantic controls, and genuine left/right padding.",
+            "At 'Sinusoidal encodings are also added at the input...' link Attention Is All You Need; in the ALiBi discussion link its primary paper. Add the actual internal links for How Transformer Encoders Produce Text Embeddings near pooling mechanics and How KV Cache Speeds Up LLM Inference Without Recomputing Past Tokens near cache invalidation. Do not guess internal URL slugs."
+          ]
+        },
+        {
+          "score": 8,
+          "rubric": {
+            "insight": 9,
+            "correctness": 9,
+            "tradeoffs": 9,
+            "actionability": 8,
+            "voice": 9,
+            "structure": 8,
+            "code": 8
+          },
+          "issues": [
+            "Replace 'The following inspection prints the actual configured limits and positional fields ... alongside the card\u2019s pooling and input instructions' and the separate snapshot-inspection block with a compact, sourced worked-example table. Link the E5-base-v2 and GTE-Qwen2-1.5B-instruct configurations, model cards, and relevant pooling artifacts. State the verified positional scheme, architecture/wrapper limits, trained pooling, and role-specific input requirements. Do not substitute guessed values if artifact verification is unavailable.",
+            "Expand 'print(\"cap:\", cap, \"pooling:\", pc)' into structured diagnostics that expose tokenizer.model_max_length, both wrapper limits, configured position limit, actual table size, positional fields, and installed package versions. Keep the resolved model revision already printed.",
+            "Change 'if budget <= cap:' so unsupported budgets produce an explicit skip message identifying the deployed cap. The requested sweep should distinguish an unsupported 1024-token input from an omitted experiment.",
+            "Replace assert-based contract checks, especially 'assert pc.get(\"include_prompt\") is True' and 'assert hf.config.model_type == \"bert\"', with explicit validation exceptions. Use a small require(condition, message) helper to preserve readability and ensure checks survive python -O. Give actionable messages for unsupported modules, prompt processing, and prefix-boundary mismatches.",
+            "Consolidate inspection into the main probe and keep that example within the architect\u2019s 90-line target. Remove whole-model-card printing and redundant explanatory paragraphs rather than adding another code block.",
+            "Add the verified internal link to 'How Transformer Encoders Produce Text Embeddings' near 'Pooling happens after token states have already become position-dependent.' Add the verified internal KV-cache link near 'Recompute affected caches rather than rotating stored keys'. Do not invent site paths.",
+            "After 'Pair these diagnostics with recall@k or nDCG, sliced by evidence position', specify a controlled evaluation protocol: hold documents, queries, and evidence labels fixed; map evidence spans to each chunking configuration; define whether recall is chunk-, document-, or evidence-level; report tail-evidence performance and vector count. This makes the final chunk-size decision reproducible."
+          ]
+        }
+      ],
+      "log": [
+        "[team-1/PM#1] brief ready: 'Positional Encoding in Embedding Models: Why 512 Tokens Is a Design Choice' [RAG/Practitioner/Deep dive]",
+        "[team-1/Researcher#1] research done, 7 sources",
+        "[team-1/Architect#1] architect brief ready (1136 words)",
+        "[team-1/Writer#1] draft written (1926 words)",
+        "[team-1/Editor#1] edit pass done",
+        "[team-1/Designer#1] layout pass done, cover generated, 1 diagram(s)",
+        "[team-1/Reviewer#1] score 6/10 -> changes requested",
+        "[team-1/Tester#1] static checks passed",
+        "[team-1/Editor#1] revised per review",
+        "[team-1/Reviewer#1] score 8/10 -> changes requested",
+        "[team-1/Tester#1] static checks passed",
+        "[team-1/Editor#1] revised per review",
+        "[team-1/Reviewer#1] score 8/10 -> changes requested",
+        "[team-1/Tester#1] static checks passed",
+        "[team-1/Head] review rounds exhausted (score 8); sending to owner with notes",
+        "[team-1/Tester#1] static checks passed",
+        "[team-1/Publisher] PR #4 opened"
+      ]
+    }
+  ]
+}
