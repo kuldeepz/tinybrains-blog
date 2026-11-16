@@ -121,15 +121,15 @@
     },
     {
       "id": "T004",
-      "title": "how transformers work for embedding",
+      "title": "How Transformer Encoders Produce Text Embeddings",
       "notes": "",
-      "status": "in_progress",
+      "status": "in_review",
       "tags": [],
       "source": "telegram",
       "created": "2026-11-16T12:25:45Z",
-      "updated": "2026-11-16T12:26:45Z",
-      "slug": null,
-      "pr": null,
+      "updated": "2026-11-16T12:34:36Z",
+      "slug": "how-transformer-encoders-produce-text-embeddings",
+      "pr": 3,
       "url": null,
       "private_files": false,
       "history": [
@@ -140,6 +140,10 @@
         {
           "at": "2026-11-16T12:26:45Z",
           "status": "in_progress"
+        },
+        {
+          "at": "2026-11-16T12:34:36Z",
+          "status": "in_review"
         }
       ]
     }

@@ -1,0 +1,111 @@
+{
+  "run": "20261116-123436",
+  "mode": "senior",
+  "usage": {
+    "calls": 11,
+    "free_calls": 1,
+    "paid_calls": 10,
+    "fallbacks": 0,
+    "prompt_tokens": 81664,
+    "completion_tokens": 33017,
+    "models": {
+      "nvidia/nemotron-3.5-super-vl:free": 1,
+      "paid:mini": 4,
+      "paid:architect": 6
+    }
+  },
+  "posts": [
+    {
+      "topic": "T004",
+      "slug": "how-transformer-encoders-produce-text-embeddings",
+      "ok": true,
+      "pr": 3,
+      "error": "",
+      "scores": [
+        8,
+        8,
+        9
+      ],
+      "reviews": [
+        {
+          "score": 8,
+          "rubric": {
+            "insight": 9,
+            "correctness": 7,
+            "tradeoffs": 8,
+            "actionability": 8,
+            "voice": 8,
+            "structure": 9,
+            "code": 8
+          },
+          "issues": [
+            "Replace 'If your index uses cosine distance, L2-normalize the embeddings' and 'If your pipeline mixes normalized queries with unnormalized documents, or vice versa, scores become hard to interpret and thresholds drift' with database-specific guidance: 'Explicit cosine divides by both vector norms, so prior normalization is not mathematically required. Verify whether your database performs that normalization internally. If you implement cosine with inner product, normalize both sides; normalizing only the query leaves document magnitude in the score.' Keep the unit-vector Euclidean equivalence, explicitly scoped to nonzero unit vectors.",
+            "Change 'that exact recipe preserved across query encoding, document indexing, and migrations' and checklist item 'Are query and document vectors produced by the exact same recipe?' to require the checkpoint's prescribed query and document recipes. Add one sentence explaining that asymmetric prefixes or separate trained encoders can be intentional, but must belong to the same compatible retrieval contract. Update the metadata wording too.",
+            "Replace the GPT-2 explanation 'It is there to show causality' and complete the diagnostic: assert that the base token IDs equal the corresponding prefix of the extended token IDs; compare out_base with the matching prefix slice of out_ext using an explicit tolerance; then separately report the changed final-real-token state. Explain that prefix invariance demonstrates causal masking, while final-state change alone does not establish retrieval quality or inferiority.",
+            "Before the code, add 'pip install torch transformers sentence-transformers numpy'. Validate the selected SentenceTransformer pooling module's mean-only configuration, or explicitly inspect and explain its saved pooling configuration. Link the checkpoint's official model card/config after verifying it. State that parity with the library applies to this checkpoint, not arbitrary SentenceTransformer pipelines.",
+            "Replace some repeated production commentary with a compact compute paragraph: for standard dense attention, increasing sequence length from 128 to 512 increases pairwise attention work by 16\u00d7 and token-linear work by 4\u00d7; neither is a total-latency prediction. Explain that length bucketing reduces padding work, bounded batches constrain memory, and waiting to fill batches adds online latency. Add deployment guidance to pin compatible model/tokenizer revisions and provision artifacts before serving starts.",
+            "Replace '<PullQuote>Context is necessary for embeddings. It is not sufficient.</PullQuote>' with a scoped claim such as '<PullQuote>Contextual token vectors are not automatically retrieval-ready sentence embeddings.</PullQuote>'. Change 'You want calibrated class boundaries' to 'You want supervised decisions over a fixed label set; validate calibration separately if probabilities matter.' Change 'the space rotates' to 'the mapping changes, potentially making old and new vectors incompatible.'",
+            "Replace 'For the reuse side of the story, the internal link you want is' with a reader-facing sentence such as 'Causal-prefix reuse is also what makes the KV cache useful during generation,' followed by the existing link. Remove the literal '**Thesis:**' label and integrate the sentence into the introduction.",
+            "Confirm that PullQuote and Callout are available in the publication MDX environment; add the required imports or convert them to supported blockquotes/callouts. Check the internal KV-cache slug against the site's actual route before publication."
+          ]
+        },
+        {
+          "score": 8,
+          "rubric": {
+            "insight": 9,
+            "correctness": 9,
+            "tradeoffs": 9,
+            "actionability": 9,
+            "voice": 9,
+            "structure": 8,
+            "code": 8
+          },
+          "issues": [
+            "Expand the passage beginning 'The core attention operation is the usual scaled dot-product form' with a compact mechanism explanation: token embeddings plus position information form the inputs; learned projections produce queries, keys, and values; scaled query-key scores determine the weighted value mixture; residual connections, normalization, and feed-forward sublayers repeatedly transform those representations. Define d as the query/key head dimension. Replace repetitive contextual-versus-retrieval-ready prose elsewhere to keep the length stable.",
+            "After 'np.testing.assert_allclose(manual, library, atol=1e-5, rtol=1e-5)', add an assertion comparing the same sentence encoded alone and beside a substantially longer sentence. This should exercise padding exclusion and evaluation mode directly, rather than relying only on agreement between two pipelines.",
+            "Revise the GPT-2 portion beginning 'prefix, suffix = \"semantic search is\", \" hard\"' into a compact right-padded batch diagnostic as specified in the architect brief. Set EOS as the padding token, explicitly set right padding, pass attention masks, select each row\u2019s final real token, and compare only matching real-prefix positions. Explain that sum(mask)-1 assumes right padding and that EOS used as padding is excluded by the mask. Preserve the distinction between demonstrating causality and measuring retrieval quality.",
+            "Expand 'Aggressive compression can flatten small score margins and drop close neighbors' with concrete decision guidance: calibrated int8 is a less aggressive storage compromise; binary representations discard more information and are candidates for coarse retrieval with higher-precision rescoring. State that rescoring cannot recover relevant documents omitted from the candidate set. Avoid assigning an unsourced accuracy penalty.",
+            "Turn 'Causal-prefix reuse is also what makes the KV cache useful during generation' into an internal link to 'How KV Cache Speeds Up LLM Inference Without Recomputing Past Tokens', using the site\u2019s actual route rather than inventing a slug."
+          ]
+        },
+        {
+          "score": 9,
+          "rubric": {
+            "insight": 9,
+            "correctness": 9,
+            "tradeoffs": 9,
+            "actionability": 9,
+            "voice": 9,
+            "structure": 9,
+            "code": 9
+          },
+          "issues": [
+            "Minor brief omission: the requested internal link to \u201cHow KV Cache Speeds Up LLM Inference Without Recomputing Past Tokens\u201d is absent. Add it beside the causal-prefix explanation using the verified site URL; do not imply that prefix reuse establishes embedding quality.",
+            "The example loads both a SentenceTransformer encoder and a separate AutoModel encoder, then retains them while loading GPT-2. This is acceptable for a standalone diagnostic, but readers should not copy that lifecycle into a serving worker. A short note about the deliberate duplicate loading would clarify the example\u2019s resource trade-off.",
+            "The production evaluation guidance is correct but could be more operational: distinguish ANN neighbor recall against exact search from relevance Recall@k or nDCG@k against judged query-document pairs. Exact-search agreement measures index fidelity, not whether the embedding model retrieves useful documents.",
+            "No factual errors or invented measurements were identified against the supplied research material. The normalization discussion correctly rejects the brief\u2019s mathematical overstatement, and the decoder diagnostic appropriately demonstrates causality rather than claiming to measure retrieval inferiority. Code execution and the newly linked checkpoint configuration were not independently verified."
+          ]
+        }
+      ],
+      "log": [
+        "[team-1/PM#1] brief ready: 'How Transformer Encoders Produce Text Embeddings' [RAG/Practitioner/Deep dive]",
+        "[team-1/Researcher#1] research done, 5 sources",
+        "[team-1/Architect#1] architect brief ready (1129 words)",
+        "[team-1/Writer#1] draft written (2427 words)",
+        "[team-1/Editor#1] edit pass done",
+        "[team-1/Designer#1] layout pass done, cover generated, 0 diagram(s)",
+        "[team-1/Reviewer#1] score 8/10 -> changes requested",
+        "[team-1/Tester#1] static checks passed",
+        "[team-1/Tester#1] style issues: ['remove drafting/meta talk or unverifiable testing claim: \"this piece\"']",
+        "[team-1/Editor#1] revised per review",
+        "[team-1/Reviewer#1] score 8/10 -> changes requested",
+        "[team-1/Tester#1] static checks passed",
+        "[team-1/Editor#1] revised per review",
+        "[team-1/Reviewer#1] score 9/10 -> APPROVED",
+        "[team-1/Tester#1] static checks passed",
+        "[team-1/Tester#1] static checks passed",
+        "[team-1/Publisher] PR #3 opened"
+      ]
+    }
+  ]
+}
