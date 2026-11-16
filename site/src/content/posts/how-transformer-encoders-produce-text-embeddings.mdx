@@ -1,0 +1,321 @@
+---
+title: How Transformer Encoders Produce Text Embeddings
+description: Build retrieval-ready transformer embeddings with correct pooling, padding masks, normalization, and checks for encoder and decoder hidden states.
+date: 2026-11-16
+topic: RAG
+level: Practitioner
+type: Deep dive
+tags:
+- transformers
+- embeddings
+- python
+- nlp
+- vector-search
+- rag
+tldr: Default to a retrieval-trained encoder and preserve its prescribed pooling and similarity metric. Bidirectional attention supplies context, but sentence-level training makes vector distances useful. Verify padding exclusion with batch-invariance checks, and treat decoder causality as a mechanism—not a retrieval-quality measurement. Version the complete embedding recipe and evaluate compression against exact-vector retrieval before deployment.
+takeaways:
+- Pooling, prompts, normalization, and metric belong to the checkpoint’s retrieval contract.
+- Test the same sentence alone and in a padded batch; pipeline agreement alone does not establish batch invariance.
+- A decoder’s final real token sees the entire prefix, but next-token training does not make it a reliable retrieval embedding.
+- Calibrated int8 is a less aggressive storage compromise than binary; rescoring cannot recover omitted candidates.
+- Equal vector dimensions do not make different embedding generations compatible.
+cover: covers/how-transformer-encoders-produce-text-embeddings.svg
+sources:
+- title: 'BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding'
+  url: https://arxiv.org/abs/1810.04805
+- title: 'Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks'
+  url: https://arxiv.org/abs/1908.10084
+- title: 'MTEB: Massive Text Embedding Benchmark'
+  url: https://arxiv.org/abs/2210.07316
+- title: Hugging Face Sentence-Transformers documentation
+  url: https://www.sbert.net/
+- title: Hugging Face Transformers documentation
+  url: https://huggingface.co/docs/transformers/
+author: Kuldeep Rao
+draft: false
+version: 1
+---
+
+Semantic search fails quietly when the system returns vectors that are numerically close but semantically wrong. The usual mistake is assuming that any transformer hidden state is a usable embedding. It usually is not. For retrieval, preserve the checkpoint’s prescribed query and document recipes, pooling, and similarity metric across encoding, indexing, and migrations.
+
+Default to a retrieval-trained encoder with its prescribed pooling and metric, not arbitrary transformer hidden states. Bidirectional attention gives you context; sentence-level supervision makes distances meaningful. The implementation below shows how to extract, pool, and verify vectors without silently changing that contract.
+
+## Meaningful vectors require more than a transformer
+
+Static token embeddings cannot distinguish a word’s meanings from context. Consider `bank`:
+
+- `river bank` should sit near geography terms.
+- `bank account` should sit near finance terms.
+
+A contextual encoder distinguishes those uses because each token vector is computed from the full sequence, not just a static lookup table. But the representation becomes useful for search through training that places semantically similar texts close under the retrieval metric. Masked-language-model training rewards token prediction; it does not directly reward stable sentence geometry.
+
+<PullQuote>Contextual token vectors are not automatically retrieval-ready sentence embeddings.</PullQuote>
+
+## Bidirectional attention contextualizes every real token
+
+Encoder-only transformers such as BERT are bidirectional: every real token can attend to every other real token in the sequence because there is no causal mask. The core attention operation is the usual scaled dot-product form:
+
+`softmax(QK^T / sqrt(d) + mask) V`
+
+Token embeddings combined with position information form the input representations. Learned projections produce queries `Q`, keys `K`, and values `V` for each attention head. Query-key dot products score which positions matter; dividing by `sqrt(d)`, where `d` is the query/key head dimension, controls their scale before softmax converts the masked scores into weights. Those weights determine the mixture of value vectors each position receives.
+
+Across layers, residual connections, normalization, and feed-forward sublayers repeatedly transform these representations. Attention mixes information across positions; feed-forward sublayers transform the features at each position.
+
+For an input batch, the model returns `last_hidden_state` with shape `[batch, tokens, hidden]`. Each real token’s hidden state can reflect both left and right context. The attention mask excludes padding as an attention source; it does not guarantee that hidden states at padding positions are zero.
+
+That distinction matters when you pool. Attention masking inside the model and padding exclusion during pooling are separate requirements.
+
+The original BERT paper is the canonical reference here: [BERT](https://arxiv.org/abs/1810.04805).
+
+## Pooling must match the model’s training
+
+A transformer gives you one vector per token. Search needs one vector per text. Pooling collapses variable-length token sequences into a fixed-size embedding, but pooling is not a cosmetic choice. It is part of the representation contract.
+
+Here is the practical trade space:
+
+| Representation | Quality / cost | Failure behavior | Choose when |
+|---|---|---|---|
+| Raw pretrained CLS | Weak retrieval baseline; cheap pooling | Classification or pretraining geometry mistaken for semantic similarity | Diagnostic baseline only |
+| Retrieval-trained mean pooling | Strong default; negligible pooling cost | Padding and truncation contaminate output | Checkpoint prescribes mean |
+| Retrieval-trained CLS | Competitive when explicitly trained; cheap pooling | Swapping recipes breaks learned geometry | Checkpoint prescribes CLS |
+| Learned or weighted pooling | Task-dependent; additional configuration or training | Untrained weights create arbitrary emphasis | Checkpoint or evaluation justifies it |
+| Embedding-trained decoder | Can perform well; backbone-dependent cost | Wrong suffix, prompt, or final-position selection | Validated dedicated embedding model |
+
+There are two details people routinely miss.
+
+First, BERT’s raw `CLS` hidden state is not the same thing as the BERT pooler output. The pooler is a learned projection plus `tanh`, and many embedding recipes ignore it entirely. Second, swapping from trained CLS pooling to mean pooling changes the representation seen by the retrieval objective, even if the vector dimension stays the same. Equal shape does not mean compatible geometry.
+
+Sentence-BERT established the now-common pattern: train the encoder for sentence similarity, then pool in the way the checkpoint expects. See [Sentence-BERT](https://arxiv.org/abs/1908.10084).
+
+<Callout type="tip" title="Checkpoint config is not optional">
+If the saved model says mean pooling, use mean pooling. If it says CLS, use CLS. Asymmetric query/document prefixes or separate trained encoders can be intentional, but they must belong to the same compatible retrieval contract.
+</Callout>
+
+## Normalize when the retrieval metric calls for it
+
+Similarity search needs a metric, and the metric changes the meaning of the numbers. Cosine similarity divides out vector magnitude. Inner product preserves magnitude. For nonzero unit vectors, squared Euclidean distance is `2 - 2 * cosine`, so these metrics give identical exact rankings when ordered in the appropriate direction.
+
+Explicit cosine divides by both vector norms, so prior normalization is not mathematically required. Verify whether your database performs that normalization internally. If you implement cosine with inner product, normalize both sides; normalizing only the query leaves document magnitude in the score.
+
+Do not normalize away magnitude when a checkpoint intentionally uses unnormalized dot product. The model’s training objective and the database’s scoring semantics must agree.
+
+Zero and nonfinite vectors should be rejected. They can indicate a broken upstream response or invalid extraction, and cosine is undefined for a zero vector.
+
+## Decoder-only states are usable, but not automatically embeddings
+
+Decoder-only models are causal: each position can attend to itself and earlier tokens. The final real token therefore sees the whole input prefix, but earlier positions cannot incorporate later tokens. This is a different representation regime from encoder-only models.
+
+The common mistake is to assume that “the last token has seen everything, therefore it is a sentence embedding.” Not necessarily. Its hidden state is optimized for next-token prediction, not stable similarity geometry. Prompt boilerplate, punctuation, and suffix tokens can change the representation. A decoder-only embedding model needs dedicated embedding training or an embedding-specific head.
+
+Causality is not the decisive disadvantage: a trained decoder embedding model can perform well.
+
+## Extract, pool, normalize, and verify
+
+The example uses `sentence-transformers/all-MiniLM-L6-v2` through both raw Hugging Face extraction and `SentenceTransformer`. It follows the saved maximum length, validates that the selected pooling module enables mean pooling only, masks padding, rejects invalid outputs, and compares the two normalized paths.
+
+The checkpoint’s [official model card](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2) and [saved pooling configuration](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/blob/main/1_Pooling/config.json) are the relevant references. The runtime assertion checks the downloaded pooling configuration rather than assuming every SentenceTransformer model uses mean pooling.
+
+```bash
+pip install torch transformers sentence-transformers numpy
+```
+
+```python title="encoder_embeddings.py"
+import numpy as np
+import torch
+from torch import Tensor
+from transformers import AutoModel, AutoTokenizer
+from sentence_transformers import SentenceTransformer
+from sentence_transformers.models import Pooling
+
+MODEL_ID = "sentence-transformers/all-MiniLM-L6-v2"
+
+def mean_pool(states: Tensor, attention_mask: Tensor) -> Tensor:
+    mask = attention_mask.unsqueeze(-1).type_as(states)
+    counts = mask.sum(dim=1)
+    if (counts <= 0).any():
+        raise ValueError("no real tokens to pool")
+    return (states * mask).sum(dim=1) / counts
+
+def l2_normalize(x: Tensor) -> Tensor:
+    norm = torch.linalg.norm(x, dim=-1, keepdim=True)
+    if not torch.isfinite(x).all() or (norm <= 0).any():
+        raise ValueError("nonfinite or zero embedding")
+    return x / norm
+
+def encode_manual(
+    texts: list[str], tokenizer, model, max_length: int
+) -> np.ndarray:
+    if not texts or any(not t.strip() for t in texts):
+        raise ValueError("empty text is not a valid embedding input")
+    batch = tokenizer(
+        texts, padding=True, truncation=True,
+        max_length=max_length, return_tensors="pt",
+    )
+    with torch.inference_mode():
+        states = model(**batch).last_hidden_state
+        vectors = l2_normalize(mean_pool(states, batch["attention_mask"]))
+    return vectors.cpu().numpy().astype(np.float32)
+
+def cosine_np(a: np.ndarray, b: np.ndarray) -> float:
+    denom = np.linalg.norm(a) * np.linalg.norm(b)
+    if not np.isfinite(denom) or denom == 0:
+        raise ValueError("invalid cosine inputs")
+    return float(np.dot(a, b) / denom)
+
+def main() -> None:
+    st_model = SentenceTransformer(MODEL_ID, device="cpu")
+    st_model.eval()
+    pooling = st_model[1]
+    if not isinstance(pooling, Pooling):
+        raise ValueError("expected the checkpoint's Pooling module")
+    config = pooling.get_config_dict()
+    enabled = {k for k, v in config.items() if k.startswith("pooling_mode_") and v}
+    if enabled != {"pooling_mode_mean_tokens"}:
+        raise ValueError(f"expected mean-only pooling, got {config}")
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
+    model = AutoModel.from_pretrained(MODEL_ID).eval()
+    texts = ["the bank raised interest rates", "the river bank was flooded"]
+    manual = encode_manual(texts, tokenizer, model, st_model.max_seq_length)
+    library = st_model.encode(texts, normalize_embeddings=True)
+    np.testing.assert_allclose(manual, library, atol=1e-5, rtol=1e-5)
+    alone = encode_manual(texts[:1], tokenizer, model, st_model.max_seq_length)
+    padded = encode_manual(
+        [texts[0], "A long document about rivers, banking, and geography. " * 20],
+        tokenizer, model, st_model.max_seq_length,
+    )
+    np.testing.assert_allclose(alone[0], padded[0], atol=1e-5, rtol=1e-5)
+    print("cosine:", cosine_np(manual[0], manual[1]))
+    print("dot_on_unit_vectors:", float(np.dot(manual[0], manual[1])))
+
+    gpt2_tok = AutoTokenizer.from_pretrained("gpt2")
+    gpt2_tok.pad_token = gpt2_tok.eos_token
+    gpt2_tok.padding_side = "right"
+    gpt2 = AutoModel.from_pretrained("gpt2").eval()
+    prefix, suffix = "semantic search is", " hard"
+    batch = gpt2_tok([prefix, prefix + suffix], padding=True, return_tensors="pt")
+    mask = batch["attention_mask"]
+    last = mask.sum(dim=1) - 1  # Valid for right padding only.
+    n = int(last[0].item()) + 1
+    assert int(last[1].item()) + 1 > n
+    assert torch.equal(batch["input_ids"][0, :n], batch["input_ids"][1, :n])
+    with torch.inference_mode():
+        states = gpt2(**batch).last_hidden_state
+    torch.testing.assert_close(states[0, :n], states[1, :n], atol=1e-5, rtol=1e-5)
+    final = states[torch.arange(states.shape[0]), last]
+    print("causal_prefix_invariant:", True)
+    print("final_state_l2_change:", float(torch.linalg.vector_norm(final[0] - final[1])))
+
+if __name__ == "__main__":
+    main()
+```
+
+The manual encoder path uses the attention mask during pooling. Its denominator counts real tokens, including unmasked special tokens, not the padded length. The additional assertion encodes the same sentence alone and beside a substantially longer input, directly checking batch invariance with padding present and dropout disabled by `eval()`. `inference_mode()` alone does not disable dropout.
+
+Parity with the library applies to this checkpoint, not arbitrary SentenceTransformer pipelines. Other pipelines can add projections, prompts, different pooling, or other transformations. If extraction diverges, inspect the complete saved pipeline, tokenizer behavior, truncation, and normalization.
+
+The GPT-2 diagnostic uses a right-padded batch and passes the tokenizer’s attention masks to the model. EOS serves as the padding token, but padded EOS positions are excluded as attention sources by the mask and are not selected as final real tokens. The index calculation `sum(mask) - 1` assumes right padding; it is not valid for left-padded rows.
+
+The assertion verifies matching tokenized prefixes and compares only their real positions, never padding states. Prefix invariance demonstrates causal masking: appending text does not alter earlier states. The diagnostic separately reports the difference between the final-real-token states. Neither comparison measures retrieval quality or establishes decoder inferiority.
+
+Before deployment, pin compatible model and tokenizer revisions, record the SentenceTransformer pipeline configuration, and provision artifacts before serving starts. Keep downloads and transient download retries in provisioning, not the online request path.
+
+## Production quality depends on length, domain, and index fidelity
+
+### Long inputs get truncated
+
+If your query or document exceeds the tokenizer limit, prefix truncation removes relevant facts near the tail.
+
+1. Chunk long documents deliberately.
+2. Monitor pre-truncation length distributions.
+3. Keep provenance so you can trace a retrieved chunk back to its source span.
+
+For standard dense attention, increasing sequence length from 128 to 512 increases pairwise attention work by `(512 / 128)^2 = 16×` and token-linear work by `512 / 128 = 4×`. Neither is a total-latency prediction. Length bucketing reduces padding work, bounded batches constrain memory, and waiting to fill batches adds online latency. Backbone size and sequence length dominate pooling overhead; do not rank architectures universally by latency.
+
+### Domain shift is real
+
+A general web-trained model can underperform on product catalogs, legal text, medical notes, code, or internal enterprise jargon. That is not “overfitting” in the training sense. It is operating outside the distribution it learned.
+
+If specialist terms matter, build a domain evaluation before fine-tuning. Short queries and ambiguous titles are where this hurts first.
+
+### Memory grows linearly with dimension
+
+Vector payload is easy to estimate:
+
+- float32: `4` bytes per dimension
+- float16: `2` bytes per dimension
+- int8: `1` byte per dimension
+- binary: about `1` bit per dimension, depending on implementation
+
+Assuming ten million 768-dimensional vectors, the raw payload is:
+
+- float32: `10^7 * 768 * 4 = 30.72 GB`
+- int8: `10^7 * 768 * 1 = 7.68 GB`
+- binary: `10^7 * 768 / 8 = 0.96 GB`
+
+These are decimal GB and exclude graph links, metadata, calibration data, and replicas.
+
+Halving dimensionality from 768 to 384 halves the float32 payload to `15.36 GB`. Whether recall survives is an evaluation question. Do not arbitrarily slice a model’s vectors unless its embedding contract supports that operation.
+
+### Quantization is not one thing
+
+Do not confuse model-weight quantization with vector or index quantization:
+
+- Model-weight quantization changes how the encoder computes vectors.
+- Vector or index quantization changes how stored embeddings are represented or searched.
+
+Aggressive compression can flatten small score margins and drop close neighbors. Calibrated int8 is a less aggressive storage compromise; start there when reducing vector payload while preserving ranking quality is the priority. Binary representations discard more information and are candidates for coarse retrieval followed by higher-precision rescoring.
+
+Compare compressed search against float exact search and evaluate candidate recall before rescoring. Rescoring can repair ordering within the candidate set; it cannot recover relevant documents omitted from that set. Retain higher-precision vectors when rescoring is part of the design.
+
+MTEB covers retrieval, similarity, clustering, classification, and other tasks. A high overall rank does not guarantee performance on your query distribution. Prioritize relevant retrieval tasks, then evaluate your own query/document pairs. See [MTEB](https://arxiv.org/abs/2210.07316).
+
+## Choose the retrieval system around the task
+
+Embeddings are for candidate retrieval, deduplication, clustering, and broad semantic matching. They are not the right tool for every ranking problem.
+
+| Task | Best first choice | Why |
+|---|---|---|
+| Open-ended semantic search | Embeddings | Fast candidate generation across large corpora |
+| Closed-label decision | Classifier | You want supervised decisions over a fixed label set; validate calibration separately if probabilities matter |
+| High-precision top-k rerank | Cross-encoder | Scores query-document pairs jointly |
+| Identifiers, names, exact terms | Hybrid search | Lexical matching catches what dense retrieval misses |
+
+Hybrid retrieval deserves to be the default whenever exact identifiers matter. Dense search alone is weak on IDs, SKU-like tokens, and rare strings.
+
+<Callout type="warning" title="What most teams get wrong">
+- Treating a successful forward pass as a useful embedding. Fix: use a retrieval-trained checkpoint and evaluate retrieval quality, not vector shape.
+- Improving pooling independently of training. Fix: follow the saved pooling recipe before experimenting.
+- Picking models by aggregate MTEB rank alone. Fix: inspect retrieval subsets, language coverage, and your own query/document pairs.
+- Blaming ANN for every miss. Fix: measure exact-vector retrieval first, then ANN recall against that baseline.
+- Mixing embedding generations in one index. Fix: version the compatible query/document contract and re-embed into a separate index before cutover.
+</Callout>
+
+## How it fails in production
+
+| Symptom | Root cause | Fix |
+|---|---|---|
+| Embeddings change across batches | Padding included or dropout active | Mask pooling, call `eval()`, test batch invariance |
+| Search deteriorates after deploy | Mixed embedding generations | Version the retrieval contract; re-embed into a new index; switch atomically |
+| Relevant facts disappear from long documents | Silent tokenizer truncation | Chunk deliberately; monitor pre-truncation lengths |
+| Short queries retrieve plausible nonsense | Ambiguity or domain mismatch | Hybrid retrieval, domain evaluation, targeted fine-tuning with appropriate negatives |
+| Close neighbors disappear after compression | Quantization perturbs small score margins | Compare compressed search with float exact search; keep higher precision for rescoring |
+| Score thresholds behave inconsistently | Normalization or metric mismatch | Verify client and database semantics; reject zero or nonfinite vectors |
+
+One non-obvious failure only shows up over time: changing weights, tokenizer, prompt template, or pooling while keeping vector dimension constant. The schema looks stable, but the mapping changes, potentially making old and new vectors incompatible.
+
+Store an embedding-contract identifier in index metadata. It should resolve to the compatible query and document checkpoints and revisions, tokenizer revisions, role-specific prefixes, pooling, truncation, normalization, and metric. Separate role recipes are not a mismatch when the checkpoint trained them to work together.
+
+## Decision checklist
+
+1. Is this a retrieval problem, not a closed-label classification problem?
+2. Does the checkpoint prescribe pooling and normalization already?
+3. Do query and document vectors follow their respective prescribed recipes within one compatible retrieval contract?
+4. Are you masking padding, calling `eval()`, and rejecting zero or nonfinite outputs?
+5. Have you verified the database’s actual cosine or inner-product semantics?
+6. Have you measured exact-vector retrieval before blaming ANN?
+7. Does truncation remove important tail content?
+8. Do you need hybrid retrieval for IDs, names, or rare tokens?
+9. Have you isolated model-weight quantization from vector or index quantization?
+10. Are revisions pinned, artifacts provisioned, and migrations isolated in a separate index before atomic cutover?
+
+Use encoder embeddings when you need semantic candidates at scale. Use classifiers when labels are closed. Use rerankers when candidate ordering needs higher precision. For semantic search, start with the model’s intended retrieval contract, not whatever hidden state happens to be convenient.
