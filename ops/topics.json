@@ -123,11 +123,11 @@
       "id": "T004",
       "title": "how transformers work for embedding",
       "notes": "",
-      "status": "idea",
+      "status": "in_progress",
       "tags": [],
       "source": "telegram",
       "created": "2026-11-16T12:25:45Z",
-      "updated": "2026-11-16T12:25:45Z",
+      "updated": "2026-11-16T12:26:45Z",
       "slug": null,
       "pr": null,
       "url": null,
@@ -136,6 +136,10 @@
         {
           "at": "2026-11-16T12:25:45Z",
           "status": "idea"
+        },
+        {
+          "at": "2026-11-16T12:26:45Z",
+          "status": "in_progress"
         }
       ]
     }
