@@ -123,14 +123,14 @@
       "id": "T004",
       "title": "How Transformer Encoders Produce Text Embeddings",
       "notes": "",
-      "status": "in_review",
+      "status": "published",
       "tags": [],
       "source": "telegram",
       "created": "2026-11-16T12:25:45Z",
-      "updated": "2026-11-16T12:34:36Z",
+      "updated": "2026-11-16T12:40:57Z",
       "slug": "how-transformer-encoders-produce-text-embeddings",
       "pr": 3,
-      "url": null,
+      "url": "https://kuldeepz.github.io/tinybrains-blog/posts/how-transformer-encoders-produce-text-embeddings/",
       "private_files": false,
       "history": [
         {
@@ -144,8 +144,13 @@
         {
           "at": "2026-11-16T12:34:36Z",
           "status": "in_review"
+        },
+        {
+          "at": "2026-11-16T12:40:57Z",
+          "status": "published"
         }
-      ]
+      ],
+      "rewriting": false
     }
   ]
 }
