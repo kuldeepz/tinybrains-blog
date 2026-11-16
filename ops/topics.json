@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "next_id": 5,
+  "next_id": 6,
   "topics": [
     {
       "id": "T001",
@@ -151,6 +151,26 @@
         }
       ],
       "rewriting": false
+    },
+    {
+      "id": "T005",
+      "title": "positional encoding in embedding or vector",
+      "notes": "",
+      "status": "idea",
+      "tags": [],
+      "source": "telegram",
+      "created": "2026-11-16T13:19:47Z",
+      "updated": "2026-11-16T13:19:47Z",
+      "slug": null,
+      "pr": null,
+      "url": null,
+      "private_files": false,
+      "history": [
+        {
+          "at": "2026-11-16T13:19:47Z",
+          "status": "idea"
+        }
+      ]
     }
   ]
 }
