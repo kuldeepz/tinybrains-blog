@@ -156,11 +156,11 @@
       "id": "T005",
       "title": "positional encoding in embedding or vector",
       "notes": "",
-      "status": "idea",
+      "status": "in_progress",
       "tags": [],
       "source": "telegram",
       "created": "2026-11-16T13:19:47Z",
-      "updated": "2026-11-16T13:19:47Z",
+      "updated": "2026-11-16T13:20:31Z",
       "slug": null,
       "pr": null,
       "url": null,
@@ -169,6 +169,10 @@
         {
           "at": "2026-11-16T13:19:47Z",
           "status": "idea"
+        },
+        {
+          "at": "2026-11-16T13:20:31Z",
+          "status": "in_progress"
         }
       ]
     }
