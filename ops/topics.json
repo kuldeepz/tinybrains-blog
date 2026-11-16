@@ -156,14 +156,14 @@
       "id": "T005",
       "title": "Positional Encoding in Embedding Models: Why 512 Tokens Is a Design Choice",
       "notes": "",
-      "status": "in_review",
+      "status": "published",
       "tags": [],
       "source": "telegram",
       "created": "2026-11-16T13:19:47Z",
-      "updated": "2026-11-16T13:31:00Z",
+      "updated": "2026-11-16T13:43:23Z",
       "slug": "positional-encoding-in-embedding-models-why-512-tokens-is-a-design-cho",
       "pr": 4,
-      "url": null,
+      "url": "https://kuldeepz.github.io/tinybrains-blog/posts/positional-encoding-in-embedding-models-why-512-tokens-is-a-design-cho/",
       "private_files": false,
       "history": [
         {
@@ -177,8 +177,13 @@
         {
           "at": "2026-11-16T13:31:00Z",
           "status": "in_review"
+        },
+        {
+          "at": "2026-11-16T13:43:23Z",
+          "status": "published"
         }
-      ]
+      ],
+      "rewriting": false
     }
   ]
 }
