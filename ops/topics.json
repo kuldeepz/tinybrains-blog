@@ -154,15 +154,15 @@
     },
     {
       "id": "T005",
-      "title": "positional encoding in embedding or vector",
+      "title": "Positional Encoding in Embedding Models: Why 512 Tokens Is a Design Choice",
       "notes": "",
-      "status": "in_progress",
+      "status": "in_review",
       "tags": [],
       "source": "telegram",
       "created": "2026-11-16T13:19:47Z",
-      "updated": "2026-11-16T13:20:31Z",
-      "slug": null,
-      "pr": null,
+      "updated": "2026-11-16T13:31:00Z",
+      "slug": "positional-encoding-in-embedding-models-why-512-tokens-is-a-design-cho",
+      "pr": 4,
       "url": null,
       "private_files": false,
       "history": [
@@ -173,6 +173,10 @@
         {
           "at": "2026-11-16T13:20:31Z",
           "status": "in_progress"
+        },
+        {
+          "at": "2026-11-16T13:31:00Z",
+          "status": "in_review"
         }
       ]
     }
