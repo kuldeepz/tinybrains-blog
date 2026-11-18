@@ -319,6 +319,12 @@ class TestAzureReasoning(unittest.TestCase):
         self.assertEqual([c["max_completion_tokens"] for c in calls], [32000, 64000, 100000])
         self.assertEqual(calls[2]["reasoning_effort"], "medium")
 
+    def test_usage_records_tier_not_deployment_name(self):
+        llm, _ = self._llm([_Resp("ok")])
+        with mock.patch.dict(os.environ, {"GEMINI_DEPLOYMENT": "secret-mini", "GEMINI_DEPLOYMENT_ARCHITECT": "secret-sol"}):
+            asyncio.run(llm._call_azure(llm_mod.load_role("architect"), [], False))
+        self.assertEqual(llm.usage["models"], {"paid:architect": 1})
+
 
 class TestRevisionLoop(unittest.TestCase):
     def setUp(self):

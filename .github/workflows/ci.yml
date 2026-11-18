@@ -1,6 +1,9 @@
 name: CI
 on:
+  # Post PRs are opened by the bot after the agent run has already built the site with the post, and GitHub holds
+  # bot-triggered PR runs for approval (they then fail on merge), so PRs that only add post files skip CI.
   pull_request:
+    paths-ignore: ["site/src/content/posts/**", "site/public/covers/**", "site/public/diagrams/**"]
   push:
     branches: [main]
     paths: ["agents/**", "tests/**", "bot/**"]
