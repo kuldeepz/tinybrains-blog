@@ -196,7 +196,8 @@ class LLM:
             break
         out = self._content(resp)
         self.usage["paid_calls"] += 1
-        self.usage["models"][f"azure:{dep}"] = self.usage["models"].get(f"azure:{dep}", 0) + 1
+        key = f"paid:{rc.azure or 'mini'}"  # tier only: deployment names never reach logs or the public repo
+        self.usage["models"][key] = self.usage["models"].get(key, 0) + 1
         return out
 
     def _content_usage(self, resp) -> None:
