@@ -9,7 +9,6 @@ import yaml
 from datetime import datetime, timezone
 
 from . import gitops
-from .drive import Drive
 from .intake import load_private_context
 from .llm import LLM, gather_limited, make_llm
 from .roles.architect import Architect
@@ -84,7 +83,7 @@ def _live_frontmatter(slug: str) -> dict:
 
 
 async def run_write(topic_ids: list[str], *, open_pr: bool = True, build: bool = True, rewrite: bool = False) -> list[Post]:
-    llm, tg, drive = make_llm(), Telegram(), Drive()
+    llm, tg = make_llm(), Telegram()
     head = Head(llm)
 
     def start(t: Tracker):
@@ -116,7 +115,12 @@ async def run_write(topic_ids: list[str], *, open_pr: bool = True, build: bool =
 
     posts = []
     for n, topic in enumerate(topics, 1):
-        ctx = await load_private_context(drive, llm, topic) if topic.get("private_files") else ""
+        ctx = ""
+        if topic.get("files"):
+            ctx, failed = await load_private_context(tg, llm, topic)
+            if failed:
+                tg.send(f"⚠️ {esc(topic['id'])}: couldn't read {failed} of {len(topic['files'])} uploaded file(s) from Telegram. "
+                        "Writing from what's left plus the idea's notes.")
         post = Post(topic=topic, team=f"team-{n}", context=ctx)
         if topic.get("rewriting"):
             post.rewrite_of = {"slug": topic.get("slug"), **_live_frontmatter(topic.get("slug", ""))}

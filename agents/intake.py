@@ -1,4 +1,7 @@
-"""Inbound processing: free-text routing and file uploads (stored privately on Drive)."""
+"""Inbound processing: free-text routing and file uploads.
+
+Uploads are never stored by us: Telegram keeps the file, the tracker keeps only its opaque file id (useless without
+the bot token), and each run downloads it into memory, uses it and lets it vanish with the throwaway runner."""
 from __future__ import annotations
 
 import base64
@@ -7,7 +10,6 @@ import logging
 import mimetypes
 from typing import Any
 
-from .drive import Drive
 from .llm import LLM
 from .telegram import Telegram
 
@@ -57,20 +59,24 @@ async def summarize_upload(llm: LLM, text: str, caption: str) -> dict[str, Any]:
                           'Return JSON: {"title": "working title for a post based on this", "notes": "2-3 sentence angle (no personal details)", "tags": ["..."]}')
 
 
-async def load_private_context(drive: Drive, llm: LLM, topic: dict) -> str:
-    """Pull a topic's uploads back from Drive as text for the writing team."""
+def file_ref(file_id: str, name: str, mime: str) -> dict[str, str]:
+    """What the (public) tracker keeps for an upload: Telegram's file id, type and extension. No file name."""
+    ext = ("." + name.rsplit(".", 1)[-1].lower()) if "." in name else ""
+    return {"id": file_id, "mime": mime or mimetypes.guess_type(name)[0] or "", "ext": ext[:8]}
+
+
+async def load_private_context(tg: Telegram, llm: LLM, topic: dict) -> tuple[str, int]:
+    """Re-download a topic's uploads from Telegram into memory and turn them into text. Returns (text, files_failed)."""
     import asyncio
-    if not drive.enabled:
-        return ""
-    parts = []
-    for f in await asyncio.to_thread(drive.list, f"uploads/{topic['id']}"):
+    parts, failed = [], 0
+    for n, f in enumerate(topic.get("files") or [], 1):
         try:
-            data = await asyncio.to_thread(drive.download, f["id"])
-            mime = f.get("mimeType") or mimetypes.guess_type(f["name"])[0] or ""
-            parts.append(f"### {f['name']}\n" + await describe(llm, f["name"], data, mime))
+            data, _ = await asyncio.to_thread(tg.download, f["id"])
+            parts.append(f"### Attachment {n}\n" + await describe(llm, f"upload{f.get('ext', '')}", data, f.get("mime", "")))
         except Exception as e:  # noqa: BLE001
-            log.warning("could not read upload: %s", type(e).__name__)
-    return "\n\n".join(parts)[:60000]
+            failed += 1
+            log.warning("could not read upload %d: %s", n, type(e).__name__)
+    return "\n\n".join(parts)[:60000], failed
 
 
 def notify_unsupported(tg: Telegram, name: str) -> None:

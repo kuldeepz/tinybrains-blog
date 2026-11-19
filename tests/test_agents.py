@@ -14,11 +14,12 @@ from unittest import mock
 TMP = Path(tempfile.mkdtemp(prefix="tb-test-"))
 os.environ["TB_ROOT"] = str(TMP)
 os.environ["TB_NO_PUSH"] = "1"
-for k in ("TELEGRAM_BOT_TOKEN", "GDRIVE_FOLDER_ID", "OPENROUTER_API_KEY", "GEMINI_API_KEY"):
+for k in ("TELEGRAM_BOT_TOKEN", "OPENROUTER_API_KEY", "GEMINI_API_KEY"):
     os.environ.pop(k, None)
 
 from agents import llm as llm_mod  # noqa: E402
 from agents import orchestrator  # noqa: E402
+from agents import cli  # noqa: E402
 from agents.cli import add_ideas  # noqa: E402
 from agents.roles.designer import cover_svg  # noqa: E402
 from agents.roles.tester import sanitize_mdx  # noqa: E402
@@ -129,6 +130,32 @@ class TestPipeline(unittest.TestCase):
         self.assertTrue(posts[0].ok, posts[0].error)
         self.assertIn("architect", fake.roles_called)
         self.assertEqual(posts[0].architect_brief, "## Thesis\nX")
+
+    def test_upload_kept_as_telegram_ref_only(self):
+        ref = cli.file_ref("ABC123", "My Private Notes.PDF", "")
+        self.assertEqual(ref, {"id": "ABC123", "mime": "application/pdf", "ext": ".pdf"})
+        add_ideas([{"title": "tuning strategies"}], "upload", files=[ref])
+        t = Tracker().topics[0]
+        self.assertEqual(t["files"], [ref]); self.assertTrue(t["private_files"])
+        self.assertNotIn("Private Notes", json.dumps(t), "file names must never reach the public tracker")
+
+    def test_uploads_read_in_memory_and_failures_do_not_sink_the_run(self):
+        files = [cli.file_ref("good", "a.txt", "text/plain"), cli.file_ref("gone", "b.txt", "text/plain")]
+        add_ideas([{"title": "tuning strategies"}], "upload", files=files)
+        fake, sent = FakeLLM(), []
+
+        def download(self, fid):
+            if fid == "gone":
+                raise RuntimeError("getFile failed: file is too old")
+            return b"grid search vs bayesian results", "x.txt"
+        with mock.patch.object(orchestrator, "make_llm", return_value=fake), \
+             mock.patch.object(orchestrator.Telegram, "download", download), \
+             mock.patch.object(orchestrator.Telegram, "send", lambda self, txt, **k: sent.append(txt)):
+            posts = asyncio.run(orchestrator.run_write(["T001"], open_pr=False, build=False))
+        self.assertTrue(posts[0].ok, posts[0].error)
+        self.assertIn("grid search vs bayesian", posts[0].context)
+        self.assertTrue(any("couldn't read 1 of 2" in m for m in sent), sent)
+        self.assertFalse(list(TMP.rglob("*.txt")), "uploads must never be written to disk")
 
     def test_free_mode_skips_architect(self):
         add_ideas([{"title": "kv cache"}], "cli")

@@ -189,7 +189,7 @@
       "id": "T006",
       "title": "Six Hyperparameter Tuning Strategies Every AI Engineer Should Know",
       "notes": "Break down manual search, grid search, random search, Bayesian optimization, successive halving, and Hyperband as a practical decision guide. Emphasize tradeoffs between exploration, compute cost, and early stopping. Include when to use each method and how to tune on validation data while reserving the test set.",
-      "status": "in_progress",
+      "status": "idea",
       "tags": [
         "hyperparameter tuning",
         "machine learning",
@@ -200,11 +200,11 @@
       ],
       "source": "upload",
       "created": "2026-11-17T05:58:37Z",
-      "updated": "2026-11-18T13:15:45Z",
+      "updated": "2026-11-19T03:33:43Z",
       "slug": null,
       "pr": null,
       "url": null,
-      "private_files": true,
+      "private_files": false,
       "history": [
         {
           "at": "2026-11-17T05:58:37Z",
@@ -213,8 +213,13 @@
         {
           "at": "2026-11-18T13:15:45Z",
           "status": "in_progress"
+        },
+        {
+          "at": "2026-11-19T03:33:43Z",
+          "status": "idea"
         }
-      ]
+      ],
+      "files": []
     }
   ]
 }

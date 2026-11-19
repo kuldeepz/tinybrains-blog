@@ -5,8 +5,7 @@
   python -m agents.cli write T001 T002 | "new topic"   run agent teams (parallel when >1)
          [--no-pr] [--no-build]
   python -m agents.cli event payload.json              handle a Telegram event dispatched by the worker
-  python -m agents.cli finalize --pr 12 --merged true  PR closed: mark published/rejected, purge private files
-  python -m agents.cli purge [--days 7]                delete old conversation logs from Drive
+  python -m agents.cli finalize --pr 12 --merged true  PR closed: mark published/rejected, forget upload references
 """
 from __future__ import annotations
 
@@ -19,8 +18,7 @@ import re
 import sys
 
 from . import gitops
-from .drive import Drive
-from .intake import describe, notify_unsupported, route, summarize_upload
+from .intake import describe, file_ref, notify_unsupported, route, summarize_upload
 from .llm import make_llm
 from .orchestrator import run_write
 from .roles.head import Head
@@ -32,13 +30,14 @@ log = logging.getLogger("tb.cli")
 ID_RE = re.compile(r"^T\d{3,}$", re.I)
 
 
-def add_ideas(items: list[dict], source: str, status: str = "idea", private: bool = False) -> list[dict]:
+def add_ideas(items: list[dict], source: str, status: str = "idea", files: list[dict] | None = None) -> list[dict]:
     def mut(t: Tracker):
         out = []
         for it in items:
             dup = t.similar(it["title"], 0.6)
             topic = t.add(it["title"], notes=it.get("notes", ""), tags=it.get("tags", []), source=source, status=status)
-            topic["private_files"] = private
+            topic["files"] = list(files or [])
+            topic["private_files"] = bool(files)
             out.append((dict(topic), [(round(s, 2), d["id"], d["title"], d["status"]) for s, d in dup[:2]]))
         return out
     return gitops.sync_tracker(mut, f"tracker: add {len(items)} {status}(s)")
@@ -65,10 +64,8 @@ async def write_from_text(text: str, tg: Telegram) -> None:
 
 
 async def handle_event(payload: dict) -> None:
-    tg, drive = Telegram(payload.get("chat_id")), Drive()
-    tg.on_send = lambda txt: drive.log_event("outbound", {"text": txt})
+    tg = Telegram(payload.get("chat_id"))
     kind, text = payload.get("kind", "message"), (payload.get("text") or "").strip()
-    drive.log_event("inbound", {"kind": kind, "text": text, "file": (payload.get("file") or {}).get("name")})
 
     if kind == "write":
         await write_from_text(text, tg)
@@ -97,14 +94,9 @@ async def handle_event(payload: dict) -> None:
         r = await route(llm, text) if text else {"intent": "store_idea"}
         status = "queued" if r["intent"] == "write_now" else "idea"
         added = add_ideas([{"title": idea.get("title") or name, "notes": idea.get("notes", ""), "tags": idea.get("tags", [])}],
-                          "upload", status=status, private=drive.enabled)
+                          "upload", status=status, files=[file_ref(f["id"], name, mime)])
         topic = added[0][0]
-        if drive.enabled:
-            drive.upload(f"uploads/{topic['id']}", name, data, mime or "application/octet-stream")
-            where = "saved privately to your Google Drive"
-        else:
-            where = "⚠️ Drive not configured, the file was not kept"
-        tg.send(fmt_added(added) + f"\n📎 {esc(name)} {where}.")
+        tg.send(fmt_added(added) + f"\n📎 {esc(name)}: read in memory when the post is written; never stored in GitHub.")
         if status == "queued":
             await run_write([topic["id"]])
         return
@@ -124,7 +116,7 @@ async def handle_event(payload: dict) -> None:
 
 
 def finalize(pr: int, merged: bool) -> None:
-    tg, drive = Telegram(), Drive()
+    tg = Telegram()
     holder: dict = {}
 
     def mut(t: Tracker):
@@ -133,27 +125,24 @@ def finalize(pr: int, merged: bool) -> None:
             return
         holder["rewrite"] = bool(topic.get("rewriting"))
         if merged:
-            t.set(topic, "published", url=f"{SITE_URL}/posts/{topic['slug']}/", rewriting=False)
+            t.set(topic, "published", url=f"{SITE_URL}/posts/{topic['slug']}/", rewriting=False, files=[], private_files=False)
         elif holder["rewrite"]:   # rejected rewrite: the previous version stays live
             t.set(topic, "published", rewriting=False)
         else:
-            t.set(topic, "rejected")
+            t.set(topic, "rejected")  # upload refs kept so /write can retry with them
         holder.update(topic)
 
     gitops.sync_tracker(mut, f"tracker: PR #{pr} {'published' if merged else 'rejected'}")
     if not holder:
         return
-    purged = drive.delete_path(f"uploads/{holder['id']}") if holder.get("private_files") else False
     if merged and holder["rewrite"]:
         tg.send(f"🎉 Rewrite published: <b>{esc(holder['title'])}</b>\n{holder['url']}\n(same URL, live in ~2 min)")
     elif holder["rewrite"]:
         tg.send(f"↩️ Rewrite of {holder['id']} discarded; the current version stays live. /rewrite {holder['id']} to try again.")
     elif merged:
-        tg.send(f"🎉 Published <b>{esc(holder['title'])}</b>\n{holder['url']}\n(live in ~2 min once Pages deploys)"
-                + ("\n🧹 Private uploads deleted from Drive." if purged else ""))
+        tg.send(f"🎉 Published <b>{esc(holder['title'])}</b>\n{holder['url']}\n(live in ~2 min once Pages deploys)")
     else:
-        tg.send(f"🗑 Rejected {holder['id']} {esc(holder['title'])}. Send /write {holder['id']} to try again."
-                + ("\n🧹 Private uploads deleted from Drive." if purged else ""))
+        tg.send(f"🗑 Rejected {holder['id']} {esc(holder['title'])}. Send /write {holder['id']} to try again.")
 
 
 async def check_models() -> int:
@@ -208,7 +197,7 @@ async def check_models() -> int:
 
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=env("TB_LOG", "INFO"), format="%(asctime)s %(name)s %(levelname)s %(message)s")
-    for noisy in ("httpx", "googleapiclient", "openai"):
+    for noisy in ("httpx", "openai"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
     ap = argparse.ArgumentParser(prog="agents")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -220,7 +209,6 @@ def main(argv: list[str] | None = None) -> int:
     rw = sub.add_parser("rewrite"); rw.add_argument("ids", nargs="+")
     e = sub.add_parser("event"); e.add_argument("payload")
     f = sub.add_parser("finalize"); f.add_argument("--pr", type=int, required=True); f.add_argument("--merged", default="true")
-    p = sub.add_parser("purge"); p.add_argument("--days", type=int, default=int(env("TB_CONV_RETENTION_DAYS", "7")))
     args = ap.parse_args(argv)
 
     if args.cmd == "idea":
@@ -247,8 +235,6 @@ def main(argv: list[str] | None = None) -> int:
             asyncio.run(handle_event(json.load(fh)))
     elif args.cmd == "finalize":
         finalize(args.pr, args.merged.lower() == "true")
-    elif args.cmd == "purge":
-        print(f"purged {Drive().purge_conversations(args.days)} day-folders")
     return 0
 
 
