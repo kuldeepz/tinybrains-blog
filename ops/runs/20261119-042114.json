@@ -1,0 +1,90 @@
+{
+  "run": "20261119-042114",
+  "mode": "senior",
+  "usage": {
+    "calls": 9,
+    "free_calls": 1,
+    "paid_calls": 8,
+    "fallbacks": 0,
+    "prompt_tokens": 65109,
+    "completion_tokens": 32799,
+    "models": {
+      "baidu/ernie-5.5-flash-preview:free": 1,
+      "paid:mini": 4,
+      "paid:architect": 4
+    }
+  },
+  "posts": [
+    {
+      "topic": "T006",
+      "slug": "six-hyperparameter-tuning-strategies-every-ai-engineer-should-know",
+      "ok": true,
+      "pr": 5,
+      "error": "",
+      "scores": [
+        7,
+        9
+      ],
+      "reviews": [
+        {
+          "score": 7,
+          "rubric": {
+            "insight": 8,
+            "correctness": 7,
+            "tradeoffs": 8,
+            "actionability": 7,
+            "voice": 8,
+            "structure": 8,
+            "code": 6
+          },
+          "issues": [
+            "Replace `seed = 1000 + trial.number` with a shared, predefined selection seed or matched seed schedule. Add validation-only confirmation of a small finalist set across fresh, predefined seeds, then freeze the winner before any test evaluation. Explain that shared randomness can reduce the variance of differences when outcomes are positively correlated.",
+            "Remove `trial.suggest_categorical(\"batch_size\", [32, 64, 128])` from the SGD example and use a fixed chunk size for `partial_fit`. Add one sentence explaining that this chunk size controls processing partitions, not neural-network minibatch gradient averaging. Keep real batch size in the conceptual search-space discussion.",
+            "Refactor `fit_one_run` and `evaluate_frozen_recipe` into shared training and scoring helpers, reducing the main example to approximately 70\u201390 lines and never above approximately 120. Add `pip install numpy scikit-learn optuna` and state the required Python syntax level without inventing package pins.",
+            "Replace the implicit configuration in `optuna.create_study(...)` with explicit seeded `TPESampler` and explicit pruning configuration. Add durable storage and a stable study name, persist relevant seed/configuration/runtime metadata, and ensure resumed studies use the same data and objective identity. Keep the accurate explanation that `timeout` does not interrupt an in-flight trial.",
+            "Replace 'use an acquisition function to propose the next trial where improvement is most likely' with 'use an acquisition function to balance predicted quality and uncertainty when choosing the next trial.' Briefly distinguish expected improvement from probability of improvement or UCB.",
+            "Rename 'Random search spends trials where uncertainty is highest' to 'Random search explores more distinct values of important dimensions.' Clarify that samples follow declared distributions and do not adapt to observed uncertainty.",
+            "Replace 'Ray Tune documents both HyperBand and ASHA, the asynchronous version' with 'Ray Tune provides HyperBand and ASHA, an asynchronous successive-halving scheduler.' Retain the distinction between Hyperband's multiple resource brackets and ASHA's asynchronous promotion decisions.",
+            "After 'The proposal method can be random, Bayesian, or manual', explain that pruned trials supply partial or censored evidence, not completed final-budget scores. State that the sampler/pruner integration must handle this distinction; do not imply any sampler can safely consume early losses as final objectives.",
+            "Expand 'For small or noisy data, nested cross-validation or a fresh validation split is safer' with group/time-aware split requirements and a precise nested-CV explanation: tune only within each outer training partition, and never feed outer-fold evaluation results back into selection. State that fresh confirmation data reduces future adaptive overfitting but does not erase prior leakage.",
+            "Replace the generic 'report predefined repeated-run mean and standard deviation' guidance with an explicit distinction: seed SD measures stochastic variability on a fixed dataset; fold SD includes split variation and is not automatically a standard error; neither alone is a confidence interval for deployment performance."
+          ]
+        },
+        {
+          "score": 9,
+          "rubric": {
+            "insight": 10,
+            "correctness": 9,
+            "tradeoffs": 10,
+            "actionability": 9,
+            "voice": 9,
+            "structure": 9,
+            "code": 9
+          },
+          "issues": [
+            "Non-blocking brief omission: the context-cost discussion does not include the requested internal link to \u201cHow KV Cache Speeds Up LLM Inference Without Recomputing Past Tokens.\u201d Add it using the site's verified route; do not guess the URL.",
+            "Minor precision issue: \u201cmismatched data, script, dependencies, or objective settings block resumption\u201d describes the identity check too broadly. It checks the generated data, script contents, selected settings, Python version, and three direct package versions\u2014not every transitive dependency or execution-environment difference. Narrow this to \u201cChanges to the recorded data, script, package versions, or objective settings block resumption.\u201d",
+            "Code assessment is by inspection, not execution. The imports, Optuna reporting/pruning calls, incremental classifier training, training-only scaling, finalist selection, and test-report persistence are coherent. Before publication, run the example as a saved Python file against the intended dependency environment, including a second invocation to check report reuse and an identity-change invocation to check rejection.",
+            "The code and its persistence caveats consume substantial space relative to the architect's target. This remains within the playbook's broader length and code budgets, but the resume-identity machinery is the first material to simplify if tighter editing is needed. Preserve the validation-only objective, finalist confirmation, frozen winner, and explicit timeout limitations."
+          ]
+        }
+      ],
+      "log": [
+        "[team-1/PM#1] brief ready: 'Six Hyperparameter Tuning Strategies Every AI Engineer Should Know' [MLOps/Practitioner/Article]",
+        "[team-1/Researcher#1] research done, 8 sources",
+        "[team-1/Architect#1] architect brief ready (1163 words)",
+        "[team-1/Writer#1] draft written (2307 words)",
+        "[team-1/Editor#1] edit pass done",
+        "[team-1/Designer#1] layout pass done, cover generated, 1 diagram(s)",
+        "[team-1/Reviewer#1] score 7/10 -> changes requested",
+        "[team-1/Tester#1] static checks passed",
+        "[team-1/Tester#1] style issues: ['a code block is 146 lines; cut it to under ~90 lines that teach the point (drop CLI/option plumbing)']",
+        "[team-1/Editor#1] revised per review",
+        "[team-1/Reviewer#1] score 9/10 -> APPROVED",
+        "[team-1/Tester#1] static checks passed",
+        "[team-1/Tester#1] static checks passed",
+        "[team-1/Publisher] PR #5 opened"
+      ]
+    }
+  ]
+}
