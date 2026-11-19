@@ -89,3 +89,13 @@ test("mode buttons store senior/mini/free once", async () => {
   await post({ callback_query: { id: "q", data: `paid:${key}:free`, from: { id: 42 }, message: { message_id: 5, chat: { id: 42 } } } });
   assert.equal(kv.get(key), "senior");
 });
+
+test("hand-edited topic with only id/title/notes/status/tags is filled in", async () => {
+  const { normalize, addIdea, setStatus } = await import("../src/topics.ts");
+  const f = normalize({ version: 1, next_id: 3, topics: [{ id: "t007", title: "Manual", notes: "n", status: "idea", tags: [] } as any] });
+  assert.equal(f.topics[0].id, "T007");
+  assert.equal(f.next_id, 8);
+  setStatus(f.topics[0], "queued");                 // used to crash: no history array
+  assert.equal(f.topics[0].history.length, 2);
+  assert.equal(addIdea(f, "next one").id, "T008"); // never reuses a hand-added id
+});

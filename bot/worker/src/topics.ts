@@ -11,6 +11,29 @@ export interface TopicsFile { version: number; next_id: number; topics: Topic[] 
 const STOP = new Set("a an the of for and or to in on with how why what is are vs using your you from into at by".split(" "));
 const now = () => new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 
+const STATUSES: Status[] = ["idea", "queued", "in_progress", "in_review", "published", "rejected"];
+
+/** Mirror of agents/topics.py normalize(): hand-edited entries only need id, title, notes, status and tags. */
+export function normalize(f: Partial<TopicsFile>): TopicsFile {
+  const topics = (f.topics ?? []) as Partial<Topic>[];
+  const ts = now();
+  for (const t of topics) {
+    t.id = String(t.id ?? "").trim().toUpperCase();
+    t.title ??= t.id;
+    t.notes ||= "";
+    if (!STATUSES.includes(t.status as Status)) t.status = "idea";
+    t.tags ||= [];
+    t.source ??= "manual";
+    t.created ??= ts;
+    t.updated ??= t.created;
+    t.slug ??= null; t.pr ??= null; t.url ??= null;
+    t.private_files ??= false;
+    if (!t.history?.length) t.history = [{ at: t.created, status: t.status as Status }];
+  }
+  const nums = topics.map((t) => /^T(\d+)$/.exec(t.id!)).filter(Boolean).map((m) => Number(m![1]) + 1);
+  return { version: f.version ?? 1, next_id: Math.max(Number(f.next_id) || 1, ...nums), topics: topics as Topic[] };
+}
+
 export function words(s: string): Set<string> {
   return new Set((s.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter((w) => !STOP.has(w) && w.length > 1));
 }

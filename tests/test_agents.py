@@ -91,6 +91,15 @@ class TestPipeline(unittest.TestCase):
         self.assertEqual(added[0][0]["id"], "T001")
         self.assertFalse((TMP / "site" / "src" / "content" / "posts").exists(), "storing an idea must not write a post")
 
+    def test_hand_edited_topic_needs_only_five_fields(self):
+        (TMP / "ops" / "topics.json").write_text(json.dumps({"version": 1, "next_id": 2, "topics": [
+            {"id": "T007", "title": "Manual idea", "notes": "my angle", "status": "idea", "tags": ["rag"]}]}))
+        t = Tracker()
+        self.assertEqual(t.data["next_id"], 8)
+        topic = t.get("T007")
+        self.assertEqual(topic["history"][0]["status"], "idea"); self.assertIsNone(topic["slug"])
+        self.assertEqual(add_ideas([{"title": "bot idea"}], "cli")[0][0]["id"], "T008")
+
     def test_duplicate_detection(self):
         add_ideas([{"title": "Hybrid retrieval with BM25 and embeddings"}], "cli")
         added = add_ideas([{"title": "Hybrid retrieval: BM25 and embeddings"}], "cli")

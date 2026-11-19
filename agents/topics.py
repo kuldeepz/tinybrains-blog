@@ -31,12 +31,39 @@ def similarity(a: str, b: str) -> float:
     return len(wa & wb) / len(wa | wb)
 
 
+def normalize(data: dict[str, Any]) -> dict[str, Any]:
+    """Accept hand-edited entries: only id, title, notes, status and tags are needed; the rest is filled in here,
+    and next_id always moves past the highest id in the file so a hand-added id is never reused."""
+    data.setdefault("version", 1)
+    topics = data.setdefault("topics", [])
+    ts = _now()
+    for t in topics:
+        t["id"] = str(t.get("id", "")).strip().upper()
+        t.setdefault("title", t["id"])
+        t["notes"] = t.get("notes") or ""
+        if t.get("status") not in STATUSES:
+            t["status"] = "idea"
+        t["tags"] = t.get("tags") or []
+        t.setdefault("source", "manual")
+        t.setdefault("created", ts)
+        t.setdefault("updated", t["created"])
+        for k in ("slug", "pr", "url"):
+            t.setdefault(k, None)
+        t.setdefault("private_files", False)
+        if not t.get("history"):
+            t["history"] = [{"at": t["created"], "status": t["status"]}]
+    nums = [int(m.group(1)) for t in topics if (m := re.fullmatch(r"T(\d+)", t["id"]))]
+    data["next_id"] = max([int(data.get("next_id") or 1)] + [n + 1 for n in nums])
+    return data
+
+
 class Tracker:
     def __init__(self, path: Path = TOPICS_FILE):
         self.path = path
         self.data: dict[str, Any] = {"version": 1, "next_id": 1, "topics": []}
         if path.exists():
             self.data = json.loads(path.read_text())
+        normalize(self.data)
 
     # ---- persistence
     def save(self) -> None:

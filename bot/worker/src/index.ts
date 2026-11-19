@@ -1,5 +1,5 @@
 // Telegram webhook -> quick commands handled here; heavy work dispatched to GitHub Actions (agents.yml).
-import { addIdea, parseCommand, setStatus, similar, summary, type TopicsFile } from "./topics.ts";
+import { addIdea, normalize, parseCommand, setStatus, similar, summary, type TopicsFile } from "./topics.ts";
 
 export interface Env {
   TELEGRAM_BOT_TOKEN: string;
@@ -194,7 +194,7 @@ async function getTopics(env: Env): Promise<{ file: TopicsFile; sha: string }> {
   const r = await gh(env, `/contents/${TOPICS_PATH}?ref=main`);
   if (!r.ok) throw new Error(`could not read tracker (${r.status})`);
   const j: any = await r.json();
-  return { file: JSON.parse(b64decode(j.content)), sha: j.sha };
+  return { file: normalize(JSON.parse(b64decode(j.content))), sha: j.sha };
 }
 
 async function updateTopics<T>(env: Env, mutate: (f: TopicsFile) => T, message: string): Promise<{ result: T }> {
