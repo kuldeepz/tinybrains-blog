@@ -22,7 +22,7 @@ from .intake import describe, file_ref, notify_unsupported, route, summarize_upl
 from .llm import make_llm
 from .orchestrator import run_write
 from .roles.head import Head
-from .settings import SITE_URL, env
+from .settings import ROOT, SITE_URL, env
 from .telegram import Telegram, esc
 from .topics import Tracker
 
@@ -30,17 +30,66 @@ log = logging.getLogger("tb.cli")
 ID_RE = re.compile(r"^T\d{3,}$", re.I)
 
 
+def _add_to(t: Tracker, items: list[dict], source: str, status: str, files: list[dict] | None = None) -> list:
+    out = []
+    for it in items:
+        dup = t.similar(it["title"], 0.6)
+        topic = t.add(it["title"], notes=it.get("notes", ""), tags=it.get("tags", []), source=source, status=status)
+        topic["files"] = list(files or [])
+        topic["private_files"] = bool(files)
+        out.append((dict(topic), [(round(s, 2), d["id"], d["title"], d["status"]) for s, d in dup[:2]]))
+    return out
+
+
 def add_ideas(items: list[dict], source: str, status: str = "idea", files: list[dict] | None = None) -> list[dict]:
+    return gitops.sync_tracker(lambda t: _add_to(t, items, source, status, files), f"tracker: add {len(items)} {status}(s)")
+
+
+# ---- ops/ideas.txt: one-line ideas the owner commits on github.com; the AI expands them into topics.
+INBOX = ROOT / "ops" / "ideas.txt"
+INBOX_HEADER = ("# One blog idea per line, in your own words. Commit this file and the bot turns each line into a\n"
+                "# topic (title, notes, tags) in topics.json, then removes the line. Lines starting with # are ignored.\n"
+                "# This file is public: don't put anything private here.\n")
+EXPAND_SYSTEM = """You turn the owner's one-line blog idea into a topic for tinybrains.ai, an AI engineering blog written
+in the voice of a principal engineer. Keep the owner's intent; do not change the subject.
+Return JSON: {"title": "clear working title, max 90 chars", "notes": "2-4 sentences: the angle, what to cover, what the
+reader should be able to do after, and any claims to verify. No invented facts or numbers.", "tags": ["3-5 lowercase tags"]}"""
+
+
+def read_inbox() -> list[str]:
+    if not INBOX.exists():
+        return []
+    return [l.strip() for l in INBOX.read_text().splitlines() if l.strip() and not l.lstrip().startswith("#")]
+
+
+async def expand_idea(llm, line: str) -> dict:
+    try:
+        r = await llm.json("pm", EXPAND_SYSTEM, line[:500])
+        title = str(r.get("title") or "").strip()
+        tags = [str(x).lower()[:30] for x in (r.get("tags") or []) if str(x).strip()][:5]
+        return {"title": title or line[:200], "notes": f"Owner's idea: {line[:300]}\n{str(r.get('notes') or '').strip()}".strip(),
+                "tags": tags}
+    except Exception as e:  # noqa: BLE001  an LLM hiccup must not lose the owner's line
+        log.warning("could not expand idea: %s", type(e).__name__)
+        return {"title": line[:200], "notes": "", "tags": []}
+
+
+async def process_inbox(tg: Telegram | None = None) -> list:
+    lines = read_inbox()
+    if not lines:
+        return []
+    llm = make_llm()
+    items = await asyncio.gather(*(expand_idea(llm, l) for l in lines))
+
     def mut(t: Tracker):
-        out = []
-        for it in items:
-            dup = t.similar(it["title"], 0.6)
-            topic = t.add(it["title"], notes=it.get("notes", ""), tags=it.get("tags", []), source=source, status=status)
-            topic["files"] = list(files or [])
-            topic["private_files"] = bool(files)
-            out.append((dict(topic), [(round(s, 2), d["id"], d["title"], d["status"]) for s, d in dup[:2]]))
-        return out
-    return gitops.sync_tracker(mut, f"tracker: add {len(items)} {status}(s)")
+        added = _add_to(t, list(items), "ideas.txt", "idea")
+        left = [l for l in (INBOX.read_text().splitlines() if INBOX.exists() else [])
+                if l.strip() and not l.lstrip().startswith("#") and l.strip() not in lines]
+        INBOX.write_text(INBOX_HEADER + "".join(l + "\n" for l in left))
+        return added
+    added = gitops.sync_tracker(mut, f"tracker: add {len(lines)} idea(s) from ideas.txt", extra_paths=[str(INBOX)])
+    (tg or Telegram()).send("📥 From ideas.txt:\n" + fmt_added(added) + "\n\nSend /write T00x when you want one written.")
+    return added
 
 
 def fmt_added(added) -> str:
@@ -204,6 +253,7 @@ def main(argv: list[str] | None = None) -> int:
     a = sub.add_parser("idea"); a.add_argument("title"); a.add_argument("--notes", default="")
     sub.add_parser("status")
     sub.add_parser("check")
+    sub.add_parser("inbox")
     w = sub.add_parser("write"); w.add_argument("items", nargs="+"); w.add_argument("--no-pr", action="store_true")
     w.add_argument("--no-build", action="store_true")
     rw = sub.add_parser("rewrite"); rw.add_argument("ids", nargs="+")
@@ -218,6 +268,8 @@ def main(argv: list[str] | None = None) -> int:
         print(Tracker().summary())
     elif args.cmd == "check":
         return asyncio.run(check_models())
+    elif args.cmd == "inbox":
+        print(f"added {len(asyncio.run(process_inbox()))} idea(s) from ops/ideas.txt")
     elif args.cmd == "write":
         ids = [i.upper() for i in args.items if ID_RE.match(i)]
         titles = [i for i in args.items if not ID_RE.match(i)]

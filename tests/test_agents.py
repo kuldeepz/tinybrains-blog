@@ -100,6 +100,21 @@ class TestPipeline(unittest.TestCase):
         self.assertEqual(topic["history"][0]["status"], "idea"); self.assertIsNone(topic["slug"])
         self.assertEqual(add_ideas([{"title": "bot idea"}], "cli")[0][0]["id"], "T008")
 
+    def test_ideas_file_lines_become_topics_and_are_removed(self):
+        (TMP / "ops" / "ideas.txt").write_text("# header\nkv cache quantization in vLLM\n\nwhy RAG evals lie\n")
+        sent = []
+        tg = mock.Mock(); tg.send = sent.append
+        with mock.patch.object(cli, "make_llm", return_value=FakeLLM()):
+            added = asyncio.run(cli.process_inbox(tg))
+        self.assertEqual([a[0]["id"] for a in added], ["T001", "T002"])
+        topics = Tracker().topics
+        self.assertTrue(all(t["status"] == "idea" and t["source"] == "ideas.txt" for t in topics))
+        self.assertIn("Owner's idea: kv cache quantization in vLLM", topics[0]["notes"])
+        self.assertEqual(cli.read_inbox(), [], "processed lines must be removed")
+        self.assertTrue((TMP / "ops" / "ideas.txt").read_text().startswith("# One blog idea per line"))
+        self.assertIn("T002", sent[0])
+        self.assertEqual(asyncio.run(cli.process_inbox(tg)), [], "empty inbox is a no-op")
+
     def test_duplicate_detection(self):
         add_ideas([{"title": "Hybrid retrieval with BM25 and embeddings"}], "cli")
         added = add_ideas([{"title": "Hybrid retrieval: BM25 and embeddings"}], "cli")

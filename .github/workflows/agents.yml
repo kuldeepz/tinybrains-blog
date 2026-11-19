@@ -4,12 +4,15 @@ name: Agents
 on:
   repository_dispatch:
     types: [telegram]
+  push:   # owner commits one-line ideas in ops/ideas.txt; the bot's own commits (GITHUB_TOKEN) never re-trigger
+    branches: [main]
+    paths: [ops/ideas.txt]
   workflow_dispatch:
     inputs:
       command:
         description: "agents.cli command"
         type: choice
-        options: [check, write, rewrite, idea, status]
+        options: [check, write, rewrite, idea, inbox, status]
         default: status
       args:
         description: "arguments, e.g. T001 T002  or  a topic title"
@@ -63,6 +66,9 @@ jobs:
           json.dump(ev.get("client_payload", {}), open(os.environ["RUNNER_TEMP"] + "/payload.json", "w"))
           PY
           python -m agents event "$RUNNER_TEMP/payload.json"
+      - name: Ideas file
+        if: github.event_name == 'push'
+        run: python -m agents inbox
       - name: Manual command
         if: github.event_name == 'workflow_dispatch'
         env:
