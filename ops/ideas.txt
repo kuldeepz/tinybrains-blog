@@ -1,3 +1,28 @@
-# One blog idea per line, in your own words. Commit this file and the bot turns each line into a
-# topic (title, notes, tags) in topics.json, then removes the line. Lines starting with # are ignored.
-# This file is public: don't put anything private here.
+# Infra
+Serving open-weight models with vLLM: continuous batching, PagedAttention, and tuning GPU memory utilization for TTFT vs throughput
+Semantic caching for LLM gateways: embedding similarity thresholds, TTL invalidation, and tenant isolation without stale context
+Model routing and fallback cascades: routing routine queries to local quantized SLMs via Ollama and escalating hard reasoning to frontier APIs
+Speculative decoding in production: drafting with small models to cut decode latency without changing output distributions
+GPU memory math for LLM inference: calculating weights, KV cache, and activation footprints before provisioning hardware
+Multi-tenant rate limiting and token budgeting for internal LLM gateways using sliding-window token buckets
+
+# Evals
+Building a calibrated LLM-as-a-judge pipeline with rubric-based grading, bias mitigation, and CI/CD regression gates
+Evaluating multi-step tool-calling agents: scoring execution trajectories, argument accuracy, and error recovery beyond final answers
+Reference-free RAG evaluation: measuring faithfulness, context precision, and retrieval drift without human-labeled ground truth
+Building golden evaluation datasets from production logs: sampling failure modes, PII scrubbing, and preventing data leakage
+Deterministic regression testing for non-deterministic LLM workflows using replay harnesses and semantic assertions
+
+# Tools
+Model Context Protocol (MCP) under the hood: building a stateful Python MCP server with stdio and SSE transports
+Constrained decoding and structured outputs: how token masking and finite-state machines guarantee valid JSON schemas
+Sandboxing code-executing agents: comparing lightweight AST validation against isolated Docker containers and microVMs
+Designing resilient tool schemas for LLM agents: error messages that help the model self-correct on bad arguments
+Computer-use and browser automation agents: grounding vision-language actions with accessibility trees and DOM snapshots
+
+# Research
+Test-time compute and inference-time scaling: how reasoning models trade latency and token budgets for verification accuracy
+Late interaction vs dense bi-encoders: token-level MaxSim scoring in ColBERT and when multi-vector retrieval pays off
+LoRA and QLoRA mechanics: rank selection, target module placement, and an empirical framework for when fine-tuning beats RAG
+Context engineering and long-context degradation: why needle-in-a-haystack benchmarks miss multi-hop reasoning decay
+Small language models (SLMs) on edge devices: quantization trade-offs (GGUF, AWQ, FP8) and offline-first hybrid architectures
