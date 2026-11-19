@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "next_id": 7,
+  "next_id": 28,
   "topics": [
     {
       "id": "T001",
@@ -233,6 +233,567 @@
       ],
       "files": [],
       "rewriting": false
+    },
+    {
+      "id": "T007",
+      "title": "Serving Open-Weight Models with vLLM: PagedAttention, Batching, and TTFT vs Throughput",
+      "notes": "Owner's idea: Serving open-weight models with vLLM: continuous batching, PagedAttention, and tuning GPU memory utilization for TTFT vs throughput\nAngle: a hands-on engineering walkthrough of serving open-weight models with vLLM, aimed at practitioners who need to balance latency and throughput under real traffic. Cover how continuous batching keeps the GPU busy by dynamically grouping in-flight requests, how PagedAttention manages the KV cache in blocks to cut fragmentation and waste, and how the gpu_memory_utilization setting shifts the tradeoff between time-to-first-token and aggregate throughput. After reading, the reader should be able to configure vLLM for a given model and GPU, reason about the TTFT-vs-throughput tradeoff, and benchmark their own deployment. Claims to verify: any specific tuning guidance should be validated against the reader's own model, hardware, and workload, since optimal settings vary.",
+      "status": "idea",
+      "tags": [
+        "vllm",
+        "llm-serving",
+        "inference-optimization",
+        "gpu-memory",
+        "latency-throughput"
+      ],
+      "source": "ideas.txt",
+      "created": "2026-11-19T10:22:56Z",
+      "updated": "2026-11-19T10:22:56Z",
+      "slug": null,
+      "pr": null,
+      "url": null,
+      "private_files": false,
+      "history": [
+        {
+          "at": "2026-11-19T10:22:56Z",
+          "status": "idea"
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": "T008",
+      "title": "Semantic Caching for LLM Gateways: Thresholds, TTLs, and Tenant Isolation",
+      "notes": "Owner's idea: Semantic caching for LLM gateways: embedding similarity thresholds, TTL invalidation, and tenant isolation without stale context\nTreat the semantic cache as a correctness boundary, not just a latency optimization. Cover how to calibrate embedding similarity thresholds, define TTL invalidation semantics, and enforce tenant isolation so cached context cannot leak or go stale across users. After reading, the reader should be able to design a gateway cache with explicit invalidation rules and tenant-scoped keys. Verify embedding model behavior, threshold calibration, TTL expiry semantics, and tenant isolation assumptions against the actual gateway implementation.",
+      "status": "idea",
+      "tags": [
+        "semantic-caching",
+        "llm-gateway",
+        "embeddings",
+        "ttl-invalidation",
+        "tenant-isolation"
+      ],
+      "source": "ideas.txt",
+      "created": "2026-11-19T10:22:56Z",
+      "updated": "2026-11-19T10:22:56Z",
+      "slug": null,
+      "pr": null,
+      "url": null,
+      "private_files": false,
+      "history": [
+        {
+          "at": "2026-11-19T10:22:56Z",
+          "status": "idea"
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": "T009",
+      "title": "Model Routing and Fallback Cascades: Local SLMs to Frontier APIs",
+      "notes": "Owner's idea: Model routing and fallback cascades: routing routine queries to local quantized SLMs via Ollama and escalating hard reasoning to frontier APIs\nThe angle is a practical routing layer that sends routine, low-risk queries to local quantized SLMs served by Ollama and escalates ambiguous or high-stakes reasoning to frontier APIs. Cover request classification, confidence thresholds, fallback cascades, timeouts, retries, cost/latency tradeoffs, and observability for routing decisions. After reading, the reader should be able to design a routing policy, implement fallback behavior, and measure whether local-first routing improves latency and cost without hurting answer quality. Verify any latency, cost, quality, and model-size claims against your own workload and provider benchmarks.",
+      "status": "idea",
+      "tags": [
+        "model-routing",
+        "ollama",
+        "fallback",
+        "llm-ops",
+        "slm"
+      ],
+      "source": "ideas.txt",
+      "created": "2026-11-19T10:22:56Z",
+      "updated": "2026-11-19T10:22:56Z",
+      "slug": null,
+      "pr": null,
+      "url": null,
+      "private_files": false,
+      "history": [
+        {
+          "at": "2026-11-19T10:22:56Z",
+          "status": "idea"
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": "T010",
+      "title": "Speculative Decoding in Production: Small Draft Models, Same Outputs",
+      "notes": "Owner's idea: Speculative decoding in production: drafting with small models to cut decode latency without changing output distributions\nExplain how speculative decoding pairs a small draft model with a larger target model to reduce decode latency while preserving the target model's output distribution. Cover drafting strategy, acceptance and verification, batching and serving constraints, and how to measure latency, throughput, and quality. Readers should be able to decide whether speculative decoding fits their serving stack and design a safe rollout. Verify claims about distribution preservation, speedup, and production overhead against your model, hardware, and workload.",
+      "status": "idea",
+      "tags": [
+        "speculative-decoding",
+        "llm-inference",
+        "latency-optimization",
+        "model-serving",
+        "ai-engineering"
+      ],
+      "source": "ideas.txt",
+      "created": "2026-11-19T10:22:56Z",
+      "updated": "2026-11-19T10:22:56Z",
+      "slug": null,
+      "pr": null,
+      "url": null,
+      "private_files": false,
+      "history": [
+        {
+          "at": "2026-11-19T10:22:56Z",
+          "status": "idea"
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": "T011",
+      "title": "GPU Memory Math for LLM Inference: Weights, KV Cache, and Activations",
+      "notes": "Owner's idea: GPU memory math for LLM inference: calculating weights, KV cache, and activation footprints before provisioning hardware\nThe post should walk through a practical memory budget for LLM inference, separating model weights, KV cache, and transient activations. It should show how batch size, sequence length, precision, and architecture choices affect each component, with formulas and worked examples. After reading, engineers should be able to estimate GPU memory needs and choose provisioning headroom before deployment. Claims about specific hardware limits or framework overheads should be verified against current vendor and library documentation.",
+      "status": "idea",
+      "tags": [
+        "llm-inference",
+        "gpu-memory",
+        "kv-cache",
+        "capacity-planning",
+        "model-serving"
+      ],
+      "source": "ideas.txt",
+      "created": "2026-11-19T10:22:56Z",
+      "updated": "2026-11-19T10:22:56Z",
+      "slug": null,
+      "pr": null,
+      "url": null,
+      "private_files": false,
+      "history": [
+        {
+          "at": "2026-11-19T10:22:56Z",
+          "status": "idea"
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": "T012",
+      "title": "Sliding-Window Token Buckets for Multi-Tenant LLM Gateway Rate Limiting",
+      "notes": "Owner's idea: Multi-tenant rate limiting and token budgeting for internal LLM gateways using sliding-window token buckets\nThis post examines how an internal LLM gateway can enforce fair per-tenant request and token limits with sliding-window token buckets. It covers bucket state, refill and consumption semantics, tenant isolation, burst handling, and observability for throttling decisions. After reading, engineers should be able to design or evaluate a token-budgeting layer that prevents noisy-neighbor usage without hard-coding provider quotas. Claims about provider limits, latency overhead, and storage requirements should be verified against the target gateway and model providers.",
+      "status": "idea",
+      "tags": [
+        "llm-gateway",
+        "rate-limiting",
+        "multi-tenancy",
+        "token-budgeting",
+        "sliding-window"
+      ],
+      "source": "ideas.txt",
+      "created": "2026-11-19T10:22:56Z",
+      "updated": "2026-11-19T10:22:56Z",
+      "slug": null,
+      "pr": null,
+      "url": null,
+      "private_files": false,
+      "history": [
+        {
+          "at": "2026-11-19T10:22:56Z",
+          "status": "idea"
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": "T013",
+      "title": "Building a Calibrated LLM-as-a-Judge Pipeline for CI/CD Regression Gates",
+      "notes": "Owner's idea: Building a calibrated LLM-as-a-judge pipeline with rubric-based grading, bias mitigation, and CI/CD regression gates\nThis post should frame LLM-as-a-judge as an engineering system, not a one-off prompt: define rubrics, calibrate scores against human labels, and measure uncertainty before using judgments as CI gates. Cover rubric design, prompt/model/version pinning, bias checks across cohorts or prompt variants, and how to turn judge outputs into stable regression signals with thresholds and human review. After reading, engineers should be able to design a judge pipeline, validate calibration and bias, and wire it into CI/CD without treating model opinions as ground truth. Verify any claims about calibration methods, bias metrics, or CI gating thresholds against your own data and tooling.",
+      "status": "idea",
+      "tags": [
+        "llm-as-judge",
+        "evaluation",
+        "ci-cd",
+        "rubric-grading",
+        "bias-mitigation"
+      ],
+      "source": "ideas.txt",
+      "created": "2026-11-19T10:22:56Z",
+      "updated": "2026-11-19T10:22:56Z",
+      "slug": null,
+      "pr": null,
+      "url": null,
+      "private_files": false,
+      "history": [
+        {
+          "at": "2026-11-19T10:22:56Z",
+          "status": "idea"
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": "T014",
+      "title": "Evaluating Multi-Step Tool-Calling Agents Beyond Final Answers",
+      "notes": "Owner's idea: Evaluating multi-step tool-calling agents: scoring execution trajectories, argument accuracy, and error recovery beyond final answers\nThe angle is to treat agent evaluation as trajectory scoring rather than only checking the final response. Cover how to score tool-call sequences, argument correctness, intermediate state changes, and recovery from failed calls. After reading, the reader should be able to design an evaluation harness that distinguishes lucky final answers from reliable multi-step execution. Verify any claims about benchmark difficulty or failure modes against your own agent traces.",
+      "status": "idea",
+      "tags": [
+        "agents",
+        "tool-calling",
+        "evaluation",
+        "trajectories",
+        "error-recovery"
+      ],
+      "source": "ideas.txt",
+      "created": "2026-11-19T10:22:56Z",
+      "updated": "2026-11-19T10:22:56Z",
+      "slug": null,
+      "pr": null,
+      "url": null,
+      "private_files": false,
+      "history": [
+        {
+          "at": "2026-11-19T10:22:56Z",
+          "status": "idea"
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": "T015",
+      "title": "Reference-Free RAG Evaluation: Faithfulness, Context Precision, and Retrieval Drift",
+      "notes": "Owner's idea: Reference-free RAG evaluation: measuring faithfulness, context precision, and retrieval drift without human-labeled ground truth\nThis post should frame reference-free RAG evaluation as a practical engineering problem: how to estimate answer support, retrieval relevance, and retrieval stability when no labeled answer key exists. It should cover metric definitions, LLM-as-judge or heuristic probes, calibration against small human audits, and monitoring for retrieval drift across queries, indexes, or time. After reading, the reader should be able to build a lightweight evaluation harness, interpret faithfulness and context precision signals, and set up drift alerts without waiting for perfect ground truth. Claims to verify include the reliability of LLM judges, the validity of proxy metrics, and whether context precision can be measured consistently without reference answers.",
+      "status": "idea",
+      "tags": [
+        "rag",
+        "evaluation",
+        "llmops",
+        "faithfulness",
+        "retrieval-drift"
+      ],
+      "source": "ideas.txt",
+      "created": "2026-11-19T10:22:56Z",
+      "updated": "2026-11-19T10:22:56Z",
+      "slug": null,
+      "pr": null,
+      "url": null,
+      "private_files": false,
+      "history": [
+        {
+          "at": "2026-11-19T10:22:56Z",
+          "status": "idea"
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": "T016",
+      "title": "Building Golden Eval Sets from Production Logs",
+      "notes": "Owner's idea: Building golden evaluation datasets from production logs: sampling failure modes, PII scrubbing, and preventing data leakage\nThe angle is a practical engineering guide for turning noisy production logs into reliable golden evaluation datasets. Cover how to sample representative failure modes, scrub PII safely, and prevent train/eval leakage through deduplication, holdouts, and provenance tracking. After reading, the reader should be able to design a repeatable dataset curation pipeline with privacy and leakage controls. Verify claims about PII detection coverage, sampling bias, and leakage prevention against your own logging and model context.",
+      "status": "idea",
+      "tags": [
+        "evaluation",
+        "production-logs",
+        "pii",
+        "data-leakage",
+        "ai-engineering"
+      ],
+      "source": "ideas.txt",
+      "created": "2026-11-19T10:22:56Z",
+      "updated": "2026-11-19T10:22:56Z",
+      "slug": null,
+      "pr": null,
+      "url": null,
+      "private_files": false,
+      "history": [
+        {
+          "at": "2026-11-19T10:22:56Z",
+          "status": "idea"
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": "T017",
+      "title": "Deterministic Regression Testing for Non-Deterministic LLM Workflows",
+      "notes": "Owner's idea: Deterministic regression testing for non-deterministic LLM workflows using replay harnesses and semantic assertions\nExplain how to make LLM workflow tests repeatable by recording model inputs, tool calls, and outputs, then replaying them through a harness that pins versions, seeds, and external dependencies where possible. Cover semantic assertions that evaluate meaning, structure, and policy constraints instead of exact string matches, plus how to separate flaky model behavior from real regressions. After reading, the engineer should be able to design a replay-based regression suite, choose assertion granularity, and triage failures without pretending non-determinism can be fully eliminated. Verify claims about determinism, replay fidelity, and assertion reliability against the team's actual model providers, tools, and evaluation data.",
+      "status": "idea",
+      "tags": [
+        "llm-testing",
+        "regression-testing",
+        "replay-harness",
+        "semantic-assertions",
+        "ai-engineering"
+      ],
+      "source": "ideas.txt",
+      "created": "2026-11-19T10:22:56Z",
+      "updated": "2026-11-19T10:22:56Z",
+      "slug": null,
+      "pr": null,
+      "url": null,
+      "private_files": false,
+      "history": [
+        {
+          "at": "2026-11-19T10:22:56Z",
+          "status": "idea"
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": "T018",
+      "title": "MCP Under the Hood: Building a Stateful Python Server with stdio and SSE",
+      "notes": "Owner's idea: Model Context Protocol (MCP) under the hood: building a stateful Python MCP server with stdio and SSE transports\nThe angle is a hands-on teardown of MCP's transport and session layers, using a stateful Python server as the running example. Cover stdio framing and process lifecycle, SSE connection/session management, tool and resource state, error propagation, and how to test both paths. Afterward readers should be able to scaffold a stateful MCP server, choose the right transport, and debug session/state issues; verify claims against the current MCP spec and Python SDK APIs.",
+      "status": "idea",
+      "tags": [
+        "mcp",
+        "python",
+        "stdio",
+        "sse",
+        "ai-engineering"
+      ],
+      "source": "ideas.txt",
+      "created": "2026-11-19T10:22:56Z",
+      "updated": "2026-11-19T10:22:56Z",
+      "slug": null,
+      "pr": null,
+      "url": null,
+      "private_files": false,
+      "history": [
+        {
+          "at": "2026-11-19T10:22:56Z",
+          "status": "idea"
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": "T019",
+      "title": "Constrained Decoding: Guaranteeing Valid JSON with Token Masking and FSMs",
+      "notes": "Owner's idea: Constrained decoding and structured outputs: how token masking and finite-state machines guarantee valid JSON schemas\nExplain how constrained decoding turns a JSON schema into a grammar or finite-state machine that masks invalid tokens at each generation step. Cover token-level masking, FSM construction from schemas, and how these constraints interact with sampling to enforce structure without post-hoc repair. After reading, readers should be able to reason about when masking or FSM-based constraints are sufficient and what to test. Verify claims about completeness, performance overhead, and compatibility with specific model tokenizers and decoding APIs.",
+      "status": "idea",
+      "tags": [
+        "constrained-decoding",
+        "structured-outputs",
+        "json-schema",
+        "finite-state-machines",
+        "token-masking"
+      ],
+      "source": "ideas.txt",
+      "created": "2026-11-19T10:22:56Z",
+      "updated": "2026-11-19T10:22:56Z",
+      "slug": null,
+      "pr": null,
+      "url": null,
+      "private_files": false,
+      "history": [
+        {
+          "at": "2026-11-19T10:22:56Z",
+          "status": "idea"
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": "T020",
+      "title": "Sandboxing Code-Executing Agents: AST Checks vs. Docker vs. MicroVMs",
+      "notes": "Owner's idea: Sandboxing code-executing agents: comparing lightweight AST validation against isolated Docker containers and microVMs\nCompare lightweight AST validation as a pre-execution guardrail against isolation through Docker containers and microVMs, focusing on threat models, failure modes, and operational tradeoffs. Cover what each layer actually prevents, where AST checks can be bypassed or insufficient, and how container and microVM boundaries differ in practice. After reading, the reader should be able to choose or combine sandboxing layers and design a defense-in-depth policy for code-executing agents. Verify claims about isolation guarantees, AST bypasses, performance overhead, and microVM security boundaries against authoritative sources and reproducible benchmarks.",
+      "status": "idea",
+      "tags": [
+        "sandboxing",
+        "code-execution",
+        "ast-validation",
+        "docker",
+        "microvms"
+      ],
+      "source": "ideas.txt",
+      "created": "2026-11-19T10:22:56Z",
+      "updated": "2026-11-19T10:22:56Z",
+      "slug": null,
+      "pr": null,
+      "url": null,
+      "private_files": false,
+      "history": [
+        {
+          "at": "2026-11-19T10:22:56Z",
+          "status": "idea"
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": "T021",
+      "title": "Designing Resilient Tool Schemas for LLM Agents",
+      "notes": "Owner's idea: Designing resilient tool schemas for LLM agents: error messages that help the model self-correct on bad arguments\nThe angle is to treat tool-call failures as feedback for the model rather than dead ends, designing schemas and error messages that guide self-correction. Cover validation layers, actionable error text, schema constraints, retry behavior, and examples of good versus unhelpful failures. After reading, the reader should be able to design tool interfaces that help agents recover from malformed arguments without brittle prompt patches. Claims to verify include whether specific error-message patterns improve recovery across different models and agent loops.",
+      "status": "idea",
+      "tags": [
+        "llm-agents",
+        "tool-design",
+        "error-handling",
+        "schema-validation",
+        "agent-reliability"
+      ],
+      "source": "ideas.txt",
+      "created": "2026-11-19T10:22:56Z",
+      "updated": "2026-11-19T10:22:56Z",
+      "slug": null,
+      "pr": null,
+      "url": null,
+      "private_files": false,
+      "history": [
+        {
+          "at": "2026-11-19T10:22:56Z",
+          "status": "idea"
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": "T022",
+      "title": "Grounding Computer-Use Agents with Accessibility Trees and DOM Snapshots",
+      "notes": "Owner's idea: Computer-use and browser automation agents: grounding vision-language actions with accessibility trees and DOM snapshots\nThe angle is a practical engineering guide to grounding vision-language agent actions in browser and desktop UIs by combining accessibility trees, DOM snapshots, and visual reasoning. Cover how to capture page state, map natural-language goals to actionable elements, handle dynamic or stale snapshots, and fall back to vision when structured signals are incomplete. After reading, the reader should be able to design a browser automation agent that selects targets more reliably than pixel-only approaches. Claims about reliability, latency, cross-browser support, and privacy implications should be verified against the target environment.",
+      "status": "idea",
+      "tags": [
+        "computer-use",
+        "browser-automation",
+        "accessibility",
+        "dom",
+        "agents"
+      ],
+      "source": "ideas.txt",
+      "created": "2026-11-19T10:22:56Z",
+      "updated": "2026-11-19T10:22:56Z",
+      "slug": null,
+      "pr": null,
+      "url": null,
+      "private_files": false,
+      "history": [
+        {
+          "at": "2026-11-19T10:22:56Z",
+          "status": "idea"
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": "T023",
+      "title": "Test-Time Compute: Trading Latency and Token Budgets for Verification Accuracy",
+      "notes": "Owner's idea: Test-time compute and inference-time scaling: how reasoning models trade latency and token budgets for verification accuracy\nA principal-engineer walkthrough of inference-time scaling: how reasoning models deliberately spend more compute at inference (longer chains, sampling, search, self-verification) to raise accuracy on hard problems. Cover the practical levers teams can pull, how each trades latency and token cost against reliability, and how to decide when extra test-time compute is worth it versus a bigger or better-tuned model. After reading, the reader should be able to reason about budgeting test-time compute for a given latency/cost envelope and pick a scaling strategy deliberately. Verify any specific accuracy-gain or cost/latency claims against your own benchmarks before publishing, since results vary by model and task.",
+      "status": "idea",
+      "tags": [],
+      "source": "ideas.txt",
+      "created": "2026-11-19T10:22:56Z",
+      "updated": "2026-11-19T10:22:56Z",
+      "slug": null,
+      "pr": null,
+      "url": null,
+      "private_files": false,
+      "history": [
+        {
+          "at": "2026-11-19T10:22:56Z",
+          "status": "idea"
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": "T024",
+      "title": "Late Interaction vs Dense Bi-Encoders: When ColBERT's MaxSim Pays Off",
+      "notes": "Owner's idea: Late interaction vs dense bi-encoders: token-level MaxSim scoring in ColBERT and when multi-vector retrieval pays off\nThe angle is a practical comparison of dense bi-encoders and ColBERT-style late interaction, focusing on token-level MaxSim scoring and the retrieval tradeoffs it introduces. Cover how each architecture represents and scores documents, where multi-vector retrieval can improve relevance, and the indexing, storage, and latency costs that come with it. After reading, the reader should be able to decide when late interaction is worth adopting and how to evaluate it on their own corpus. Verify any quality, latency, or index-size claims against your own data, hardware, and serving constraints.",
+      "status": "idea",
+      "tags": [
+        "colbert",
+        "late-interaction",
+        "dense-retrieval",
+        "maxsim",
+        "information-retrieval"
+      ],
+      "source": "ideas.txt",
+      "created": "2026-11-19T10:22:56Z",
+      "updated": "2026-11-19T10:22:56Z",
+      "slug": null,
+      "pr": null,
+      "url": null,
+      "private_files": false,
+      "history": [
+        {
+          "at": "2026-11-19T10:22:56Z",
+          "status": "idea"
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": "T025",
+      "title": "LoRA vs QLoRA: Rank, Modules, and When Fine-Tuning Beats RAG",
+      "notes": "Owner's idea: LoRA and QLoRA mechanics: rank selection, target module placement, and an empirical framework for when fine-tuning beats RAG\nFrame LoRA and QLoRA as practical capacity-allocation decisions: how rank controls update expressiveness, how target module placement changes where adaptation lands, and how quantization shifts the tradeoff. Cover a reproducible evaluation framework that compares fine-tuning against RAG on task-specific behavior, latency, cost, and data freshness. Readers should leave able to choose rank and target modules deliberately and run a small benchmark to decide when fine-tuning is justified. Verify any claims about benchmark outcomes, memory savings, or latency against the team's own model, hardware, and workload.",
+      "status": "idea",
+      "tags": [
+        "lora",
+        "qlora",
+        "fine-tuning",
+        "rag",
+        "evaluation"
+      ],
+      "source": "ideas.txt",
+      "created": "2026-11-19T10:22:56Z",
+      "updated": "2026-11-19T10:22:56Z",
+      "slug": null,
+      "pr": null,
+      "url": null,
+      "private_files": false,
+      "history": [
+        {
+          "at": "2026-11-19T10:22:56Z",
+          "status": "idea"
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": "T026",
+      "title": "Context Engineering: Why Needle-in-a-Haystack Misses Multi-Hop Decay",
+      "notes": "Owner's idea: Context engineering and long-context degradation: why needle-in-a-haystack benchmarks miss multi-hop reasoning decay\nThe post should argue that single-fact retrieval tests overstate long-context reliability because they do not stress chained inference, cross-document synthesis, or conflicting evidence. Cover failure modes such as attention dilution, positional bias, and context rot, and contrast them with multi-hop evaluation designs. Readers should be able to design context pipelines and test suites that measure multi-hop degradation, not just needle recall. Verify any claims about benchmark limitations against current model evaluations and avoid asserting specific degradation rates without evidence.",
+      "status": "idea",
+      "tags": [
+        "context-engineering",
+        "long-context",
+        "evaluation",
+        "multi-hop-reasoning",
+        "llm-reliability"
+      ],
+      "source": "ideas.txt",
+      "created": "2026-11-19T10:22:56Z",
+      "updated": "2026-11-19T10:22:56Z",
+      "slug": null,
+      "pr": null,
+      "url": null,
+      "private_files": false,
+      "history": [
+        {
+          "at": "2026-11-19T10:22:56Z",
+          "status": "idea"
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": "T027",
+      "title": "SLMs on Edge: GGUF, AWQ, FP8, and Offline-First Hybrids",
+      "notes": "Owner's idea: Small language models (SLMs) on edge devices: quantization trade-offs (GGUF, AWQ, FP8) and offline-first hybrid architectures\nAngle: a principal-engineer guide to choosing quantization formats and hybrid architectures for small language models on edge devices. Cover trade-offs across GGUF, AWQ, and FP8 in terms of memory, latency, accuracy, hardware support, runtime maturity, and conversion workflow, then show how offline-first hybrids combine local inference with selective cloud or sync paths. After reading, the reader should be able to pick a quantization path for a target device and design a fallback-aware offline-first architecture. Claims to verify: accuracy and latency on the specific edge hardware, format support in the chosen runtime, and power/thermal behavior under sustained load.",
+      "status": "idea",
+      "tags": [
+        "slm",
+        "edge-ai",
+        "quantization",
+        "offline-first",
+        "hybrid-architecture"
+      ],
+      "source": "ideas.txt",
+      "created": "2026-11-19T10:22:56Z",
+      "updated": "2026-11-19T10:22:56Z",
+      "slug": null,
+      "pr": null,
+      "url": null,
+      "private_files": false,
+      "history": [
+        {
+          "at": "2026-11-19T10:22:56Z",
+          "status": "idea"
+        }
+      ],
+      "files": []
     }
   ]
 }
