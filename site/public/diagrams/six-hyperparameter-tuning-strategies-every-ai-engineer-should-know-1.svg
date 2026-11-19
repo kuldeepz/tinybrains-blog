@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 420" role="img" aria-labelledby="title desc">
+  <title id="title">Six hyperparameter tuning strategies and when to use them</title>
+  <desc id="desc">A comparison diagram showing manual search, grid search, random search, Bayesian optimization, successive halving, and Hyperband arranged from low to high automation with their best-use cues.</desc>
+  <rect width="800" height="420" fill="#0B0C10"/>
+  <text x="40" y="42" fill="#E6E8EE" font-family="Geist, ui-sans-serif, sans-serif" font-size="24" font-weight="700">Hyperparameter tuning strategies</text>
+  <text x="40" y="68" fill="#AAB0BF" font-family="Geist, ui-sans-serif, sans-serif" font-size="14">Choose by budget, dimensionality, and how predictive early signals are.</text>
+
+  <line x1="70" y1="360" x2="730" y2="360" stroke="#2A2D36" stroke-width="2"/>
+  <line x1="70" y1="360" x2="70" y2="90" stroke="#2A2D36" stroke-width="2"/>
+
+  <text x="46" y="98" fill="#AAB0BF" font-family="Geist, ui-sans-serif, sans-serif" font-size="12" transform="rotate(-90 46 98)">Automation</text>
+  <text x="722" y="384" fill="#AAB0BF" font-family="Geist, ui-sans-serif, sans-serif" font-size="12">Compute efficiency</text>
+
+  <g>
+    <rect x="92" y="268" rx="16" ry="16" width="92" height="62" fill="#151823" stroke="#7C5CFF" stroke-width="2"/>
+    <text x="138" y="295" text-anchor="middle" fill="#E6E8EE" font-family="Geist, ui-sans-serif, sans-serif" font-size="16" font-weight="700">Manual</text>
+    <text x="138" y="315" text-anchor="middle" fill="#22D3EE" font-family="Geist, ui-sans-serif, sans-serif" font-size="11">debug a few knobs</text>
+  </g>
+
+  <g>
+    <rect x="196" y="222" rx="16" ry="16" width="92" height="108" fill="#151823" stroke="#7C5CFF" stroke-width="2"/>
+    <text x="242" y="249" text-anchor="middle" fill="#E6E8EE" font-family="Geist, ui-sans-serif, sans-serif" font-size="16" font-weight="700">Grid</text>
+    <text x="242" y="269" text-anchor="middle" fill="#22D3EE" font-family="Geist, ui-sans-serif, sans-serif" font-size="11">tiny discrete space</text>
+    <text x="242" y="287" text-anchor="middle" fill="#22D3EE" font-family="Geist, ui-sans-serif, sans-serif" font-size="11">interaction coverage</text>
+  </g>
+
+  <g>
+    <rect x="300" y="190" rx="16" ry="16" width="92" height="140" fill="#151823" stroke="#22D3EE" stroke-width="2"/>
+    <text x="346" y="217" text-anchor="middle" fill="#E6E8EE" font-family="Geist, ui-sans-serif, sans-serif" font-size="16" font-weight="700">Random</text>
+    <text x="346" y="237" text-anchor="middle" fill="#22D3EE" font-family="Geist, ui-sans-serif, sans-serif" font-size="11">unknown important</text>
+    <text x="346" y="255" text-anchor="middle" fill="#22D3EE" font-family="Geist, ui-sans-serif, sans-serif" font-size="11">dimensions</text>
+    <text x="346" y="273" text-anchor="middle" fill="#22D3EE" font-family="Geist, ui-sans-serif, sans-serif" font-size="11">parallel friendly</text>
+  </g>
+
+  <g>
+    <rect x="404" y="152" rx="16" ry="16" width="92" height="178" fill="#151823" stroke="#22D3EE" stroke-width="2"/>
+    <text x="450" y="179" text-anchor="middle" fill="#E6E8EE" font-family="Geist, ui-sans-serif, sans-serif" font-size="16" font-weight="700">Bayesian</text>
+    <text x="450" y="199" text-anchor="middle" fill="#22D3EE" font-family="Geist, ui-sans-serif, sans-serif" font-size="11">expensive evaluations</text>
+    <text x="450" y="217" text-anchor="middle" fill="#22D3EE" font-family="Geist, ui-sans-serif, sans-serif" font-size="11">surrogate guided</text>
+    <text x="450" y="235" text-anchor="middle" fill="#22D3EE" font-family="Geist, ui-sans-serif, sans-serif" font-size="11">stable objective</text>
+  </g>
+
+  <g>
+    <rect x="508" y="188" rx="16" ry="16" width="92" height="142" fill="#151823" stroke="#7C5CFF" stroke-width="2"/>
+    <text x="554" y="215" text-anchor="middle" fill="#E6E8EE" font-family="Geist, ui-sans-serif, sans-serif" font-size="16" font-weight="700">Halving</text>
+    <text x="554" y="235" text-anchor="middle" fill="#22D3EE" font-family="Geist, ui-sans-serif, sans-serif" font-size="11">predictive early</text>
+    <text x="554" y="253" text-anchor="middle" fill="#22D3EE" font-family="Geist, ui-sans-serif, sans-serif" font-size="11">rankings</text>
+    <text x="554" y="271" text-anchor="middle" fill="#22D3EE" font-family="Geist, ui-sans-serif, sans-serif" font-size="11">progressive pruning</text>
+  </g>
+
+  <g>
+    <rect x="612" y="170" rx="16" ry="16" width="92" height="160" fill="#151823" stroke="#7C5CFF" stroke-width="2"/>
+    <text x="658" y="197" text-anchor="middle" fill="#E6E8EE" font-family="Geist, ui-sans-serif, sans-serif" font-size="16" font-weight="700">Hyperband</text>
+    <text x="658" y="217" text-anchor="middle" fill="#22D3EE" font-family="Geist, ui-sans-serif, sans-serif" font-size="11">multiple brackets</text>
+    <text x="658" y="235" text-anchor="middle" fill="#22D3EE" font-family="Geist, ui-sans-serif, sans-serif" font-size="11">hedge start budget</text>
+    <text x="658" y="253" text-anchor="middle" fill="#22D3EE" font-family="Geist, ui-sans-serif, sans-serif" font-size="11">best with ASHA</text>
+  </g>
+
+  <path d="M138 250 C 200 205, 260 190, 346 170" fill="none" stroke="#7C5CFF" stroke-width="2" stroke-dasharray="6 6"/>
+  <path d="M346 170 C 392 150, 430 142, 450 132" fill="none" stroke="#22D3EE" stroke-width="2" stroke-dasharray="6 6"/>
+  <path d="M450 132 C 500 160, 560 165, 658 154" fill="none" stroke="#7C5CFF" stroke-width="2" stroke-dasharray="6 6"/>
+
+  <circle cx="138" cy="250" r="5" fill="#7C5CFF"/>
+  <circle cx="242" cy="222" r="5" fill="#7C5CFF"/>
+  <circle cx="346" cy="190" r="5" fill="#22D3EE"/>
+  <circle cx="450" cy="152" r="5" fill="#22D3EE"/>
+  <circle cx="554" cy="188" r="5" fill="#7C5CFF"/>
+  <circle cx="658" cy="170" r="5" fill="#7C5CFF"/>
+
+  <text x="92" y="392" fill="#AAB0BF" font-family="Geist, ui-sans-serif, sans-serif" font-size="12">Low automation</text>
+  <text x="634" y="392" fill="#AAB0BF" font-family="Geist, ui-sans-serif, sans-serif" font-size="12">Higher automation</text>
+</svg>
