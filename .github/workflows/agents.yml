@@ -1,6 +1,6 @@
 name: Agents
 # Privacy: the Telegram payload is read from $GITHUB_EVENT_PATH by Python and never echoed or put in `env:`
-# (step env blocks are printed in public logs). Private material goes to Google Drive only.
+# (step env blocks are printed in public logs). Uploads stay in Telegram and are only read into memory.
 on:
   repository_dispatch:
     types: [telegram]
@@ -9,13 +9,11 @@ on:
       command:
         description: "agents.cli command"
         type: choice
-        options: [check, write, rewrite, idea, status, purge]
+        options: [check, write, rewrite, idea, status]
         default: status
       args:
         description: "arguments, e.g. T001 T002  or  a topic title"
         required: false
-  schedule:
-    - cron: "17 3 * * 1" # weekly: purge old conversation logs from Drive
 permissions:
   contents: write
   pull-requests: write
@@ -34,11 +32,6 @@ jobs:
       GEMINI_API_VERSION: ${{ vars.GEMINI_API_VERSION || secrets.GEMINI_API_VERSION }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-      GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
-      GDRIVE_SA_JSON: ${{ secrets.GDRIVE_SA_JSON }}
-      GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
-      GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
-      GDRIVE_REFRESH_TOKEN: ${{ secrets.GDRIVE_REFRESH_TOKEN }}
       GH_TOKEN: ${{ github.token }}
       TB_MAX_PARALLEL: ${{ vars.TB_MAX_PARALLEL || '4' }}
       TB_BOT_URL: ${{ vars.TB_BOT_URL }}                 # Cloudflare worker, used to poll paid-model approvals
@@ -86,6 +79,3 @@ jobs:
             rewrite) python -m agents rewrite $(echo "$ARGS" | tr ',' ' ') ;;
             *) python -m agents "$CMD" ;;
           esac
-      - name: Weekly purge
-        if: github.event_name == 'schedule'
-        run: python -m agents purge

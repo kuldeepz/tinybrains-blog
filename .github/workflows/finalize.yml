@@ -1,5 +1,5 @@
 name: Finalize post
-# When a post/* PR is merged (approved) or closed (rejected): update tracker, delete private Drive files, notify Telegram.
+# When a post/* PR is merged (approved) or closed (rejected): update tracker, forget upload references, notify Telegram.
 on:
   pull_request:
     types: [closed]
@@ -14,11 +14,6 @@ jobs:
     env:
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-      GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
-      GDRIVE_SA_JSON: ${{ secrets.GDRIVE_SA_JSON }}
-      GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
-      GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
-      GDRIVE_REFRESH_TOKEN: ${{ secrets.GDRIVE_REFRESH_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with: { ref: main, fetch-depth: 0 }

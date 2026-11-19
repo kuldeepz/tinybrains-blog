@@ -22,7 +22,7 @@ class Telegram:
         self.token = env("TELEGRAM_BOT_TOKEN")
         self.chat_id = chat_id or env("TELEGRAM_CHAT_ID")
         self.enabled = bool(self.token and self.chat_id)
-        self.on_send = None  # optional callback(text) e.g. to log replies to private Drive
+        self.on_send = None  # optional callback(text) for every outbound message
 
     def _post(self, method: str, **payload: Any) -> dict[str, Any] | None:
         if not self.enabled:
