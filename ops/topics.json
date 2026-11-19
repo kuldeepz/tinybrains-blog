@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "next_id": 28,
+  "next_id": 29,
   "topics": [
     {
       "id": "T001",
@@ -790,6 +790,33 @@
       "history": [
         {
           "at": "2026-11-19T10:22:56Z",
+          "status": "idea"
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": "T028",
+      "title": "MCP vs UTCP: Proxy Servers, Direct JSON Manuals, and Auth Isolation",
+      "notes": "Owner's idea: MCP vs UTCP for agent tool integration: proxy server architecture vs direct JSON manuals, auth isolation, and when to skip wrapper servers\nCompare MCP's proxy-server model with UTCP's direct JSON-manual approach for exposing tools to agents, focusing on architecture, authentication boundaries, and operational tradeoffs. Cover how each option handles tool discovery, credential isolation, request routing, and failure modes, then explain when a wrapper server is justified versus when direct integration is simpler. After reading, engineers should be able to choose an integration pattern and design auth isolation without adding unnecessary proxy layers. Verify protocol capabilities, security guarantees, and operational overhead claims against current specs and implementations.",
+      "status": "idea",
+      "tags": [
+        "mcp",
+        "utcp",
+        "agent-tools",
+        "auth-isolation",
+        "integration-architecture"
+      ],
+      "source": "ideas.txt",
+      "created": "2026-11-19T10:25:38Z",
+      "updated": "2026-11-19T10:25:38Z",
+      "slug": null,
+      "pr": null,
+      "url": null,
+      "private_files": false,
+      "history": [
+        {
+          "at": "2026-11-19T10:25:38Z",
           "status": "idea"
         }
       ],

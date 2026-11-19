@@ -1,1 +1,3 @@
-MCP vs UTCP for agent tool integration: proxy server architecture vs direct JSON manuals, auth isolation, and when to skip wrapper servers
+# One blog idea per line, in your own words. Commit this file and the bot turns each line into a
+# topic (title, notes, tags) in topics.json, then removes the line. Lines starting with # are ignored.
+# This file is public: don't put anything private here.
