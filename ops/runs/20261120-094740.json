@@ -1,0 +1,112 @@
+{
+  "run": "20261120-094740",
+  "mode": "senior",
+  "usage": {
+    "calls": 11,
+    "free_calls": 1,
+    "paid_calls": 10,
+    "fallbacks": 0,
+    "prompt_tokens": 85528,
+    "completion_tokens": 36208,
+    "models": {
+      "baidu/ernie-5.5-flash-preview:free": 1,
+      "paid:mini": 4,
+      "paid:architect": 6
+    }
+  },
+  "posts": [
+    {
+      "topic": "T007",
+      "slug": "serving-open-weight-models-with-vllm-ttft-vs-throughput-tuning",
+      "ok": true,
+      "pr": 6,
+      "error": "",
+      "scores": [
+        7,
+        8,
+        8
+      ],
+      "reviews": [
+        {
+          "score": 7,
+          "rubric": {
+            "insight": 9,
+            "correctness": 6,
+            "tradeoffs": 9,
+            "actionability": 7,
+            "voice": 8,
+            "structure": 8,
+            "code": 4
+          },
+          "issues": [
+            "Replace 'def estimate_tokens(text: str)' and 'out_tokens += estimate_tokens(text)' with actual completion-token accounting. For a release supporting streamed usage, request stream_options={\"include_usage\": true}, capture chunk.usage.completion_tokens, and guard chunk.choices before indexing because the final usage chunk can have an empty choices list. If usage is missing, fail the measurement rather than substitute a word count. Keep content timestamps separate from usage arrival.",
+            "Change 'It uses ... actual token counts' only after implementing that behavior. Explain that the stated TPOT formula is a client-observed per-request average; p95 across those averages is not p95 individual inter-token latency. Buffered delivery can distort the timing even with an exact denominator.",
+            "Replace the four-prompt baseline with model-tokenized prompts whose input lengths are recorded or fixed. Make model selection configurable alongside the server URL. For a controlled output-length run, use a release-supported mechanism to prevent early EOS and verify returned lengths; otherwise label the run variable-output and report its length distribution. Disable prefix caching explicitly for the baseline.",
+            "Wrap AsyncOpenAI in an async context manager and close each stream in a finally block. Declare Python 3.11+ for asyncio.timeout, include dependency installation and environment setup, and remove the unused statistics import.",
+            "Extend Sample and reporting to include end-to-end latency and failure categories, including timeouts. Abort if warmup fails. Label latency percentiles as successful-request-only and require the failure/timeout rate to satisfy the acceptance criteria rather than allowing dropped slow requests to improve the apparent result.",
+            "Replace 'If it is lower, the server interleaves work more often, which usually helps responsiveness' with an explanation conditional on chunked prefill: smaller budgets can protect decode cadence while lengthening a new prompt's TTFT. State the non-chunked-prefill scheduling constraint and remove the overlapping generic tip.",
+            "Replace 'The supplied preemption claim needs correcting' with reader-facing prose, for example: 'Higher gpu_memory_utilization usually reduces KV-capacity preemption by enlarging the cache, but leaves less margin for allocations outside that cache.' Delete the later duplicate correction.",
+            "Correct the paper link label to 'Efficient Memory Management for Large Language Model Serving with PagedAttention'. Add verified, targeted sources for chunked-prefill scheduling and tensor-parallel KV-head replication, or narrow those claims to behavior established by the available sources.",
+            "Replace 'use the release-matched scripts in the repository' with a short numbered procedure showing how to locate the installed benchmark entry point, inspect its help, select fixed-length and trace workloads, set controlled arrival rates, and export percentile results. Include a concrete invocation only after verifying its flags against the chosen release.",
+            "Label the 64-request Python sweep as a wiring smoke test. For capacity selection, require longer steady-state runs, repeated trials, enough observations for meaningful tail estimates, and open-loop tests showing stable queue depth. Retain fill/drain-inclusive throughput but identify it as finite-run throughput."
+          ]
+        },
+        {
+          "score": 8,
+          "rubric": {
+            "insight": 9,
+            "correctness": 8,
+            "tradeoffs": 9,
+            "actionability": 9,
+            "voice": 9,
+            "structure": 9,
+            "code": 8
+          },
+          "issues": [
+            "Replace \u201cyou have a queueing problem, a memory-capacity problem, or both\u201d with a diagnostic rather than a conclusion: \u201cSeparate queueing, prefill cost, and KV-capacity pressure before changing batching limits.\u201d Explain that prompt-length distributions must remain comparable when diagnosing a rising TTFT percentile.",
+            "Extend the code around \u201cif chunk.choices and chunk.choices[0].text:\u201d to record gaps between nonempty content deliveries, and report their p50/p95 separately as client-observed content-chunk gaps. Explicitly state that these are not individual inter-token latency percentiles and that pooling gaps weights requests by their number of delivery events. Keep request-average TPOT as a separate metric and keep the example below approximately 120 lines.",
+            "Replace the generic explanation after \u201cDo not extrapolate single-GPU latency or cache capacity by simply dividing by GPU count\u201d with the concrete reason: KV heads may be replicated when the tensor-parallel layout cannot shard them further. Add that collective-communication costs depend on the interconnect, so PCIe and NVLink deployments need separate measurements. Verify the replication detail against the relevant vLLM implementation or release-matched documentation before publication.",
+            "Add the CMS-resolved internal link to \u201cHow KV Cache Speeds Up LLM Inference Without Recomputing Past Tokens\u201d beside the KV mechanism explanation, and \u201cSix Hyperparameter Tuning Strategies Every AI Engineer Should Know\u201d beside the one-variable-at-a-time tuning guidance. Do not guess their URLs."
+          ]
+        },
+        {
+          "score": 8,
+          "rubric": {
+            "insight": 9,
+            "correctness": 9,
+            "tradeoffs": 9,
+            "actionability": 8,
+            "voice": 9,
+            "structure": 9,
+            "code": 8
+          },
+          "issues": [
+            "After \u201cConfirm the resolved configuration reports prefix caching disabled,\u201d add an explicit baseline choice for chunked prefill. Require the installed release's supported enable/disable syntax, verify the resolved state, and hold it fixed during the initial memory and scheduler sweeps. Then change it deliberately in the feature comparison. Do not invent a release-independent flag.",
+            "Change the reporting around \u201cClient-observed request-average TPOT\u201d so the sample retains and reports the number of nonempty content deliveries per request. Report the fraction of successful multi-token requests delivered in a single chunk, and state that substantial coalescing makes these TPOT measurements insufficient to establish token-generation cadence. Keep the delivery metric, but do not let near-zero values produced by buffering silently qualify a configuration against a token-cadence SLO.",
+            "Extend \u201cTensor parallelism distributes model work across GPUs but adds communication\u201d with the conditional caveat that KV memory does not necessarily scale as 1/TP: some grouped-query-attention configurations replicate KV heads when the shard count exceeds the available KV heads. Cite release-matched implementation or official documentation for the supported configuration rather than presenting the behavior as universal.",
+            "Replace \u201csee **How KV Cache Speeds Up LLM Inference Without Recomputing Past Tokens**\u201d and \u201cSee **Six Hyperparameter Tuning Strategies Every AI Engineer Should Know**\u201d with actual internal Markdown links using verified site routes. Do not guess the slugs."
+          ]
+        }
+      ],
+      "log": [
+        "[team-1/PM#1] brief ready: 'Serving Open-Weight Models with vLLM: TTFT vs Throughput Tuning' [Infra/Practitioner/Tutorial]",
+        "[team-1/Researcher#1] research done, 5 sources",
+        "[team-1/Architect#1] architect brief ready (1141 words)",
+        "[team-1/Writer#1] draft written (2378 words)",
+        "[team-1/Editor#1] edit pass done",
+        "[team-1/Designer#1] layout pass done, cover generated, 0 diagram(s)",
+        "[team-1/Reviewer#1] score 7/10 -> changes requested",
+        "[team-1/Tester#1] static checks passed",
+        "[team-1/Editor#1] revised per review",
+        "[team-1/Reviewer#1] score 8/10 -> changes requested",
+        "[team-1/Tester#1] static checks passed",
+        "[team-1/Editor#1] revised per review",
+        "[team-1/Reviewer#1] score 8/10 -> changes requested",
+        "[team-1/Tester#1] static checks passed",
+        "[team-1/Head] review rounds exhausted (score 8); sending to owner with notes",
+        "[team-1/Tester#1] static checks passed",
+        "[team-1/Publisher] PR #6 opened"
+      ]
+    }
+  ]
+}
