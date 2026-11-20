@@ -1,0 +1,323 @@
+---
+title: 'Serving Open-Weight Models with vLLM: TTFT vs Throughput Tuning'
+description: Tune vLLM memory and batching for sustainable throughput within TTFT and TPOT budgets. Measure delivery gaps, diagnose bottlenecks, and avoid overload.
+date: 2026-11-20
+topic: Infra
+level: Practitioner
+type: Tutorial
+tags:
+- vllm
+- llm-serving
+- pagedattention
+- continuous-batching
+- ttft
+- throughput
+tldr: Optimize vLLM for sustainable throughput within latency and failure budgets, not peak tokens per second. Separate queueing, prefill cost, and KV-capacity pressure before changing batching limits. Measure request-average TPOT separately from client-observed content-chunk gaps. Select capacity with sustained arrivals, comparable workloads, and stable queues.
+takeaways:
+- Higher GPU memory utilization can reduce KV preemption while increasing allocation OOM exposure.
+- Keep prompt-length distributions comparable when diagnosing rising TTFT percentiles.
+- Streaming content-chunk gaps are delivery-cadence metrics, not individual inter-token latency.
+- Measure PCIe and NVLink deployments separately; communication changes the tensor-parallel trade-off.
+- Require stable queues and passing latency and failure budgets before accepting throughput gains.
+cover: covers/serving-open-weight-models-with-vllm-ttft-vs-throughput-tuning.svg
+sources:
+- title: vLLM Documentation
+  url: https://docs.vllm.ai/
+- title: vLLM GitHub repository
+  url: https://github.com/vllm-project/vllm
+- title: 'vLLM Blog: vLLM: Easy, Fast, and Cheap LLM Serving with PagedAttention'
+  url: https://blog.vllm.ai/2023/06/20/vllm.html
+- title: 'vLLM Paper: vLLM: Easy, Fast, and Cheap LLM Serving with PagedAttention'
+  url: https://arxiv.org/abs/2309.06180
+- title: 'vLLM Documentation: Serving / OpenAI-Compatible Server'
+  url: https://docs.vllm.ai/en/latest/serving/openai_compatible_server.html
+author: Kuldeep Rao
+draft: false
+version: 1
+---
+
+If your vLLM server shows strong aggregate tokens per second but p95 TTFT keeps climbing, separate queueing, prefill cost, and KV-capacity pressure before changing batching limits. Keep prompt-length distributions comparable: a shift toward longer prompts can raise TTFT without a scheduling regression. The right target is the highest sustainable throughput inside your TTFT and TPOT budgets, not the biggest number a friendly benchmark prints once. Continuous batching keeps the GPU busy; PagedAttention makes KV capacity easier to manage, but neither eliminates queueing. Separate memory capacity from scheduling policy, then measure both under the traffic you actually serve.
+
+## Busy GPUs can still serve unhappy users
+
+vLLM is a good default when request lengths vary and you need a serving stack that keeps a GPU occupied without building your own scheduler. For small, low-concurrency workloads with short prompts, a simpler server can be enough: batching efficiency may not be your bottleneck.
+
+The trouble starts when concurrency and context length rise together. Aggregate throughput can improve while users wait longer for the first token. GPU utilization is a diagnostic, not an acceptance criterion.
+
+## Continuous batching fills gaps, not queues
+
+Continuous batching adds and removes requests at token boundaries rather than waiting for a static batch to finish. Sequences that finish early stop occupying the active set, while waiting requests can join subsequent iterations.
+
+Two limits shape that behavior:
+
+- `max_num_seqs`: maximum sequences participating in a scheduler iteration.
+- `max_num_batched_tokens`: maximum tokens processed in an iteration.
+
+Suppose six short prompts and four long prompts arrive together. A larger token budget permits more prompt processing—*prefill*—per iteration, but that work can interfere with ongoing generation.
+
+With chunked prefill, long prompts can be split across iterations. Smaller budgets can protect decode cadence by limiting competing prefill work, while lengthening a new prompt’s TTFT because its prefill needs more iterations. That is a trade between existing users’ generation latency and arriving users’ first-token latency, not a universal responsiveness improvement.
+
+Without chunked prefill, an individual prompt’s prefill must fit within the scheduling budget rather than being split across iterations. Check the installed release’s validation constraints before lowering `max_num_batched_tokens` below the supported context length.
+
+## KV capacity follows active tokens
+
+PagedAttention stores the attention keys and values—the KV cache—in fixed-size blocks instead of requiring one contiguous allocation per sequence. This reduces fragmentation; it does not eliminate the memory consumed by active contexts. For the underlying reuse mechanism, see **How KV Cache Speeds Up LLM Inference Without Recomputing Past Tokens**.
+
+The original mechanism is described in [Efficient Memory Management for Large Language Model Serving with PagedAttention](https://arxiv.org/abs/2309.06180) and [the vLLM launch blog](https://blog.vllm.ai/2023/06/20/vllm.html). Historical descriptions use 16-token blocks; block sizes are backend- and version-dependent, not a universal current default.
+
+**ESTIMATE:** assume attention retaining all context tokens, 32 layers, eight KV heads, head dimension 128, two-byte KV elements, and no tensor parallelism or shared prefixes:
+
+```text
+KV bytes/token = 2 × 32 × 8 × 128 × 2 = 128 KiB
+8 GiB KV pool / 128 KiB = 65,536 tokens
+```
+
+The leading factor of two accounts for keys and values. An already-profiled 8 GiB KV pool therefore holds roughly 16 unique 4,096-token contexts before block rounding and other capacity constraints.
+
+The pool itself comes from a budget:
+
+```text
+KV capacity in bytes ≈ GPU memory × utilization
+                       − model weights
+                       − profiled non-KV memory
+                       − release-specific reservations
+```
+
+Profiling, graph allocations, and backend reservations make this more than “free memory divided by bytes per token.”
+
+**ESTIMATE, under the same model assumptions and unchanged non-KV allocations:** raising utilization by 0.05 on a 24 GiB GPU adds a nominal `24 GiB × 0.05 = 1.2 GiB` to the budget. That corresponds to approximately `1.2 GiB / 128 KiB = 9,830` additional KV tokens before block rounding. It does not guarantee that all that memory becomes usable cache.
+
+`max_model_len` is a ceiling, not eager per-request allocation. A larger limit permits expensive requests; it does not reserve the full limit for every sequence. Actual KV use grows with actual context.
+
+## Separate memory headroom from scheduler aggressiveness
+
+Higher `gpu_memory_utilization` usually reduces KV-capacity preemption by enlarging the cache, but leaves less margin for allocations outside that cache. KV exhaustion and allocation OOM are different failure mechanisms.
+
+The following arrows and outcomes are tendencies, not guarantees.
+
+| Change | Capacity/throughput | Latency consequence | Choose when |
+|---|---|---|---|
+| Raise `gpu_memory_utilization` | More KV capacity; less allocator margin | Helps capacity-induced waiting/preemption, not compute saturation | KV pressure is demonstrated |
+| Raise `max_num_seqs` | More decode fan-in; eventually diminishing returns | Longer steps can worsen TPOT/tails | Short-request throughput is constrained |
+| Raise `max_num_batched_tokens` | More prefill work per iteration | May improve prompt TTFT, hurt decode cadence | Prefill-bound workload |
+| Enable chunked prefill | Interleaves prompt work with decoding | Usually protects decode latency; own prompt TTFT may rise | Mixed long prompts and interactive decoding |
+| Enable prefix caching | Avoids repeated-prefix computation | Strong workload-dependent TTFT benefit | Production prefixes genuinely repeat |
+| Increase TP | Lower per-GPU memory pressure; communication cost | Can improve or worsen latency | Model/context needs multiple GPUs |
+
+`max_num_seqs` is not service-level admission control. It limits scheduler participation, not the HTTP backlog. Bound the upstream queue and reject overload explicitly.
+
+Weight quantization is not KV quantization: smaller weights can leave more cache room without changing KV bytes per token. Quantization throughput depends on supported kernels and whether the workload is compute- or memory-bound.
+
+Tensor parallelism distributes model work across GPUs but adds communication. Do not extrapolate single-GPU latency by simply dividing by GPU count. Collective-communication costs depend on the interconnect, so PCIe and NVLink deployments need separate measurements.
+
+## Make the launch reproducible before tuning
+
+Record the model and tokenizer revisions, GPU type and interconnect, quantization, vLLM version, and resolved configuration. Include chunked-prefill and prefix-cache settings rather than relying on defaults.
+
+Install vLLM in a GPU environment supported by its [documentation](https://docs.vllm.ai/). For the client example, use **Python 3.11+**, which provides `asyncio.timeout`:
+
+```bash
+python -m venv .venv-client
+source .venv-client/bin/activate
+pip install openai transformers
+
+export VLLM_BASE_URL=http://localhost:8000/v1
+export VLLM_MODEL=facebook/opt-125m
+export VLLM_TOKENIZER=facebook/opt-125m
+export OPENAI_API_KEY=dummy
+```
+
+Use the actual server credential when authentication is enabled.
+
+Before launching the baseline, inspect `vllm serve --help` and the installed release’s documentation. Obtain its explicit prefix-cache disable flag and put it in `VLLM_PREFIX_CACHE_OFF_FLAG`; do not omit the setting or assume caching defaults to off.
+
+This launch is a server smoke test, not a tuning recommendation:
+
+```bash
+: "${VLLM_PREFIX_CACHE_OFF_FLAG:?Set the cache-disable flag from installed help}"
+vllm serve facebook/opt-125m \
+  --tensor-parallel-size 1 \
+  --max-model-len 2048 \
+  --gpu-memory-utilization 0.90 \
+  --max-num-seqs 64 \
+  --max-num-batched-tokens 4096 \
+  "$VLLM_PREFIX_CACHE_OFF_FLAG"
+```
+
+Confirm the resolved configuration reports prefix caching disabled. Replace the smoke-test model with your deployment model before capacity testing.
+
+CLI and Python interfaces use different argument names: for example, `--max-num-seqs` versus `max_num_seqs`. Translate names explicitly rather than copying shell flags into Python configuration. Consult the [OpenAI-compatible server documentation](https://docs.vllm.ai/en/latest/serving/openai_compatible_server.html) matched to your installed release.
+
+## Measure token counts separately from delivery timing
+
+Track TTFT, TPOT, end-to-end latency, output lengths, throughput, failures, and timeouts. Streaming chunks are not tokens: buffering can combine multiple tokens into a single delivery event.
+
+The client below requests streamed usage with `stream_options={"include_usage": True}` and reads `chunk.usage.completion_tokens`. It requires a server release supporting that behavior. Missing usage invalidates the measurement; there is no word-count fallback.
+
+Content timestamps remain separate from usage arrival:
+
+- TTFT: request start to first nonempty content.
+- End-to-end content latency: request start to last nonempty content.
+- Client-observed request-average TPOT: `(last content time - first content time) / (completion tokens - 1)`.
+- Client-observed content-chunk gaps: elapsed time between successive nonempty content deliveries.
+
+The p95 across request-average TPOT values is **not** p95 individual inter-token latency. Exact token counts fix the denominator, not transport buffering: buffered delivery can still distort both endpoints of the timing interval. One-token outputs have no TPOT.
+
+Content-chunk gap p50/p95 are also **not individual inter-token latency percentiles**. Pooling gaps weights requests by their number of delivery events: a request delivering many chunks contributes more gaps than one delivering few. A request with just one nonempty delivery contributes no gap, even if it contains many tokens.
+
+The **64-request sweep is a wiring smoke test**. It uses model-tokenized, fixed 256-token inputs and records their length. Output length is **variable**: `max_tokens=64` is a ceiling, not a guarantee against early EOS. The report includes returned length distributions.
+
+```python
+import asyncio
+import os
+import time
+from collections import Counter
+from dataclasses import dataclass
+from openai import AsyncOpenAI
+from transformers import AutoTokenizer
+
+@dataclass
+class Sample:
+    ttft: float | None
+    tpot: float | None
+    e2e: float
+    tokens: int
+    gaps: list[float]
+    failure: str | None
+
+def pct(xs, p):
+    xs = sorted(xs)
+    return xs[round((len(xs) - 1) * p)] if xs else float("nan")
+
+async def one(client: AsyncOpenAI, model: str, prompt: list[int]) -> Sample:
+    start = time.perf_counter()
+    first = last = count = stream = None
+    gaps = []
+    def failed(reason):
+        return Sample(None, None, time.perf_counter() - start, count or 0, gaps, reason)
+    try:
+        async with asyncio.timeout(60):
+            try:
+                stream = await client.completions.create(
+                    model=model, prompt=prompt, max_tokens=64,
+                    temperature=0, stream=True, stream_options={"include_usage": True},
+                )
+                async for chunk in stream:
+                    if chunk.usage is not None:
+                        count = chunk.usage.completion_tokens
+                    # Ignore empty and usage-only chunks when measuring delivery cadence.
+                    if chunk.choices and chunk.choices[0].text:
+                        now = time.perf_counter()
+                        if last is not None:
+                            gaps.append(now - last)
+                        last = now
+                        if first is None:
+                            first = now
+            finally:
+                if stream is not None:
+                    await stream.close()
+        if count is None:
+            return failed("missing_usage")
+        if first is None or last is None or count < 1:
+            return failed("empty_output")
+        tpot = (last - first) / (count - 1) if count > 1 else None
+        return Sample(first - start, tpot, last - start, count, gaps, None)
+    except TimeoutError:
+        return failed("timeout")
+    except Exception as exc:
+        return failed(type(exc).__name__)
+
+async def run(client, model, prompt, concurrency):
+    warmup = await one(client, model, prompt)
+    if warmup.failure:
+        raise RuntimeError(f"Warmup failed: {warmup.failure}")
+    sem = asyncio.Semaphore(concurrency)
+    async def task():
+        async with sem:
+            return await one(client, model, prompt)
+    start = time.perf_counter()
+    samples = await asyncio.gather(*(task() for _ in range(64)))
+    wall = time.perf_counter() - start
+    ok = [s for s in samples if s.failure is None]
+    failures = Counter(s.failure for s in samples if s.failure)
+    print(f"concurrency={concurrency} input_tokens={len(prompt)} successful={len(ok)}/64")
+    print(f"failures={dict(failures)} failure_rate={(64-len(ok))/64:.3%} "
+          f"timeout_rate={failures['timeout']/64:.3%}")
+    metrics = {name: [getattr(s, name) * 1000 for s in ok
+                     if getattr(s, name) is not None] for name in ("ttft", "tpot", "e2e")}
+    metrics["client_observed_content_chunk_gap"] = [g * 1000 for s in ok for g in s.gaps]
+    for name, values in metrics.items():
+        print(f"successful_only {name}_ms p50={pct(values, .5):.1f} p95={pct(values, .95):.1f}")
+    lengths = [s.tokens for s in ok]
+    print(f"variable_output_tokens min={min(lengths, default=0)} "
+          f"p50={pct(lengths, .5)} p95={pct(lengths, .95)} max={max(lengths, default=0)}")
+    print(f"finite_run_successful_tokens_per_s={sum(lengths)/wall:.1f}")
+
+async def main():
+    model = os.environ["VLLM_MODEL"]
+    tokenizer = AutoTokenizer.from_pretrained(os.environ.get("VLLM_TOKENIZER", model))
+    prompt = tokenizer.encode("Explain memory and scheduling trade-offs. " * 256,
+                              add_special_tokens=False)[:256]
+    if len(prompt) != 256:
+        raise RuntimeError("Expected exactly 256 input tokens")
+    async with AsyncOpenAI(base_url=os.environ["VLLM_BASE_URL"],
+                           api_key=os.environ.get("OPENAI_API_KEY", "dummy"),
+                           max_retries=0, timeout=60) as client:
+        for concurrency in (1, 2, 4, 8, 16, 32):
+            await run(client, model, prompt, concurrency)
+
+asyncio.run(main())
+```
+
+Save this as `sweep_vllm.py` and run `python sweep_vllm.py`. The tokenizer must match the served model, even if the server exposes a different model alias.
+
+Latency percentiles are **successful-request-only**. Failure and timeout rates must independently satisfy your acceptance criteria; dropping slow requests must not turn an overloaded configuration into a passing one. The throughput denominator includes filling and draining the run, so the result is **finite-run throughput**, not steady-state capacity.
+
+## Select capacity with sustained arrivals
+
+For a controlled output-length experiment, use the installed release’s documented mechanism for suppressing early EOS, then verify every returned completion length equals the target. If that mechanism is unavailable, retain the variable-output label and report the distribution.
+
+To use vLLM’s benchmark tooling:
+
+1. Record the installed version and inspect `vllm --help` for a benchmark entry point. If available, inspect `vllm bench serve --help`; otherwise locate `benchmark_serving.py` in the matching repository release.
+2. Inspect that entry point’s help for dataset selection, prompt/output lengths, warmup, arrival rate, duration or request count, and result export.
+3. Select a fixed-length synthetic workload first. Verify tokenized input lengths and returned output lengths. Then select a representative trace workload, including long prompts and realistic output lengths.
+4. Set controlled open-loop arrival rates below, near, and above the suspected capacity. Keep model, hardware, caching, and workload fixed while changing one server knob.
+5. Enable the release-supported result export and percentile settings. Retain TTFT, request-average TPOT, end-to-end latency, lengths, failures, timeouts, and throughput alongside the resolved configuration.
+
+Benchmark interfaces change across releases; these steps avoid presenting unverified workload flags as a runnable command. The [vLLM repository](https://github.com/vllm-project/vllm) contains the version-specific tooling.
+
+Capacity selection requires longer steady-state runs, repeated trials, and enough completed observations for tail estimates. With 64 successes, only about three observations occupy the upper 5%; with 1,000, about 50 do. Neither count alone establishes confidence, especially when requests share correlated stalls.
+
+Closed-loop clients slow their arrivals when responses slow, potentially hiding overload. Open-loop tests must show stable queue depth over time at the accepted rate. Include bursts, bounded upstream queues, and rejected requests in the accounting.
+
+## How this fails in production
+
+| Symptom | Root cause | Fix |
+|---|---|---|
+| Startup OOM | Weights, profiling workspace, or graph allocations exceed headroom | Inspect the allocation stage; lower utilization, change TP, or use a smaller/quantized model |
+| Preemption warnings and latency sawtooth | Active contexts exhaust KV blocks | Reduce concurrency or increase KV capacity; distinguish recomputation from release-specific swapping |
+| Long prompts hurt interactive users | Expensive prefill and KV occupancy | Test chunked prefill; isolate long-context traffic if interference persists |
+| Tail latency grows while throughput stays flat | Arrival rate exceeds service capacity | Bound queues, reject overload, and test bursts |
+| Synthetic results collapse in production | Benchmark prefixes repeat but production prefixes do not | Report cache-disabled and representative cache-warm results separately |
+
+Reducing context length is not a universal fix for a weight-allocation OOM. Likewise, more batching cannot stabilize a queue whose arrival rate exceeds service capacity.
+
+## What most teams get wrong
+
+- **They optimize utilization instead of SLO-qualified throughput.** Require latency and failure budgets to pass together.
+- **They read configured context length as allocated context length.** Budget from active tokens and profiled KV capacity.
+- **They sweep multiple knobs simultaneously.** Change one variable and retain the resolved configuration. See **Six Hyperparameter Tuning Strategies Every AI Engineer Should Know** for broader tuning guidance.
+- **They treat delivery chunks as tokens.** Use completion usage; measure delivery cadence separately.
+- **They declare capacity from a short closed-loop run.** Require repeated steady-state and open-loop evidence.
+
+## Decision checklist
+
+1. Fix model, tokenizer, quantization, GPU count, and required context ceiling.
+2. Establish a cache-disabled baseline with recorded input and output lengths.
+3. Start with conservative utilization and moderate batching limits; inspect memory profiling and preemption.
+4. Sweep KV capacity separately from `max_num_seqs` and `max_num_batched_tokens`.
+5. Accept only configurations meeting TTFT, TPOT, end-to-end, failure, and timeout budgets under sustained arrivals.
+6. Recheck representative chunked-prefill and cache-warm traffic before rollout.
+
+Choose the highest throughput that remains inside those budgets with stable queues—not the highest token rate reached while requests accumulate.
