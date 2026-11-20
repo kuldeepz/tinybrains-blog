@@ -238,7 +238,7 @@
       "id": "T007",
       "title": "Serving Open-Weight Models with vLLM: PagedAttention, Batching, and TTFT vs Throughput",
       "notes": "Owner's idea: Serving open-weight models with vLLM: continuous batching, PagedAttention, and tuning GPU memory utilization for TTFT vs throughput\nAngle: a hands-on engineering walkthrough of serving open-weight models with vLLM, aimed at practitioners who need to balance latency and throughput under real traffic. Cover how continuous batching keeps the GPU busy by dynamically grouping in-flight requests, how PagedAttention manages the KV cache in blocks to cut fragmentation and waste, and how the gpu_memory_utilization setting shifts the tradeoff between time-to-first-token and aggregate throughput. After reading, the reader should be able to configure vLLM for a given model and GPU, reason about the TTFT-vs-throughput tradeoff, and benchmark their own deployment. Claims to verify: any specific tuning guidance should be validated against the reader's own model, hardware, and workload, since optimal settings vary.",
-      "status": "idea",
+      "status": "in_progress",
       "tags": [
         "vllm",
         "llm-serving",
@@ -248,7 +248,7 @@
       ],
       "source": "ideas.txt",
       "created": "2026-11-19T10:22:56Z",
-      "updated": "2026-11-19T10:22:56Z",
+      "updated": "2026-11-20T09:39:04Z",
       "slug": null,
       "pr": null,
       "url": null,
@@ -257,6 +257,10 @@
         {
           "at": "2026-11-19T10:22:56Z",
           "status": "idea"
+        },
+        {
+          "at": "2026-11-20T09:39:04Z",
+          "status": "in_progress"
         }
       ],
       "files": []
