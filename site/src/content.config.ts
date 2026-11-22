@@ -21,6 +21,7 @@ const posts = defineCollection({
     author: z.string().default(SITE.author.name),
     draft: z.boolean().default(false),
     version: z.number().default(1),
+    youtube: z.string().regex(/^[A-Za-z0-9_-]{11}$/).optional(),   // the post's video, added after it's on YouTube
   }),
 });
 

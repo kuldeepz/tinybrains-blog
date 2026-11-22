@@ -25,6 +25,7 @@ from .roles.head import Head
 from .settings import ROOT, SITE_URL, env
 from .telegram import Telegram, esc
 from .topics import Tracker
+from .video import request_video, set_video
 
 log = logging.getLogger("tb.cli")
 ID_RE = re.compile(r"^T\d{3,}$", re.I)
@@ -116,6 +117,9 @@ async def handle_event(payload: dict) -> None:
     tg = Telegram(payload.get("chat_id"))
     kind, text = payload.get("kind", "message"), (payload.get("text") or "").strip()
 
+    if kind == "video":                                # from the video pipeline: the post's video is on YouTube
+        set_video(str(payload.get("topic", "")), str(payload.get("youtube", "")), tg)
+        return
     if kind == "write":
         await write_from_text(text, tg)
         return
@@ -192,6 +196,12 @@ def finalize(pr: int, merged: bool) -> None:
         tg.send(f"🎉 Published <b>{esc(holder['title'])}</b>\n{holder['url']}\n(live in ~2 min once Pages deploys)")
     else:
         tg.send(f"🗑 Rejected {holder['id']} {esc(holder['title'])}. Send /write {holder['id']} to try again.")
+    if merged and not holder.get("youtube"):          # a rewrite keeps its existing video
+        try:
+            if request_video(holder):
+                tg.send("🎬 Making the 5-minute video for this post; the video bot will send a preview to publish.")
+        except Exception as e:  # noqa: BLE001  a video hiccup never affects the published post
+            log.warning("video request failed: %s", type(e).__name__)
 
 
 async def check_models() -> int:

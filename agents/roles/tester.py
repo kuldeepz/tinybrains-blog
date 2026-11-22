@@ -105,6 +105,8 @@ def frontmatter(post: Post) -> str:
         "draft": False,
         "version": int((post.rewrite_of or {}).get("version") or 0) + 1,
     }
+    if (post.rewrite_of or {}).get("youtube"):
+        fm["youtube"] = str(post.rewrite_of["youtube"])     # a rewrite keeps the post's video
     if post.rewrite_of:
         fm = {**fm, "updated": date.today()}
         fm = {k: fm[k] for k in ["title", "description", "date", "updated"] + [k for k in fm if k not in ("title", "description", "date", "updated")]}

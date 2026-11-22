@@ -3,7 +3,7 @@ name: Agents
 # (step env blocks are printed in public logs). Uploads stay in Telegram and are only read into memory.
 on:
   repository_dispatch:
-    types: [telegram]
+    types: [telegram, video]   # video = the video pipeline reporting a post's YouTube id
   push:   # owner commits one-line ideas in ops/ideas.txt; the bot's own commits (GITHUB_TOKEN) never re-trigger
     branches: [main]
     paths: [ops/ideas.txt]
@@ -20,6 +20,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  actions: write   # start a Pages redeploy after adding a video to a post
 jobs:
   run:
     runs-on: ubuntu-latest

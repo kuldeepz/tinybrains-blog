@@ -14,6 +14,8 @@ jobs:
     env:
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      VIDEO_REPO: ${{ vars.VIDEO_REPO }}                       # the video pipeline's repo (owner/name)
+      VIDEO_DISPATCH_TOKEN: ${{ secrets.VIDEO_DISPATCH_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with: { ref: main, fetch-depth: 0 }

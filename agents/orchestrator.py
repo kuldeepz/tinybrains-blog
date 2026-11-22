@@ -79,7 +79,7 @@ def _live_frontmatter(slug: str) -> dict:
         fm = yaml.safe_load(f.read_text().split("---", 2)[1]) or {}
     except Exception:  # noqa: BLE001
         return {}
-    return {"date": fm.get("date"), "version": fm.get("version", 1)}
+    return {"date": fm.get("date"), "version": fm.get("version", 1), "youtube": fm.get("youtube")}
 
 
 async def run_write(topic_ids: list[str], *, open_pr: bool = True, build: bool = True, rewrite: bool = False) -> list[Post]:

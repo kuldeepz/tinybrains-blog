@@ -485,3 +485,61 @@ class TestRewrite(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestPostVideo(unittest.TestCase):
+    def setUp(self):
+        shutil.rmtree(TMP, ignore_errors=True)
+        (TMP / "ops").mkdir(parents=True)
+        add_ideas([{"title": "kv cache"}], "cli")
+        t = Tracker()
+        t.set(t.get("T001"), "published", slug="kv-cache", pr=1, url="https://x/posts/kv-cache/")
+        t.save()
+        self.post = TMP / "site" / "src" / "content" / "posts" / "kv-cache.mdx"
+        self.post.parent.mkdir(parents=True)
+        self.post.write_text("---\ntitle: KV cache\nversion: 1\n---\n\nbody with --- inside\n")
+
+    def test_video_id_lands_in_frontmatter_and_tracker(self):
+        from agents import video
+        sent = []
+        tg = mock.Mock(); tg.send = sent.append
+        self.assertTrue(video.set_video("t001", "Ioch_xZfack", tg))
+        text = self.post.read_text()
+        self.assertTrue(text.startswith("---\ntitle: KV cache\nversion: 1\nyoutube: \"Ioch_xZfack\"\n---\n"))
+        self.assertTrue(text.endswith("body with --- inside\n"))
+        self.assertEqual(Tracker().get("T001")["youtube"], "Ioch_xZfack")
+        video.set_video("T001", "Abcdefghijk", tg)                       # a re-made video replaces, never duplicates
+        self.assertEqual(self.post.read_text().count("youtube:"), 1)
+        self.assertIn("youtu.be/Abcdefghijk", sent[-1])
+
+    def test_bad_or_unknown_video_events_change_nothing(self):
+        from agents import video
+        tg = mock.Mock()
+        before = self.post.read_text()
+        self.assertFalse(video.set_video("T001", "not-an-id", tg))
+        self.assertFalse(video.set_video("../x", "Ioch_xZfack", tg))
+        self.assertFalse(video.set_video("T009", "Ioch_xZfack", tg))   # not a published topic
+        self.assertEqual(self.post.read_text(), before)
+
+    def test_published_post_requests_video_once(self):
+        from agents import video
+        calls = []
+        resp = mock.Mock(status_code=204)
+        with mock.patch.dict(os.environ, {"VIDEO_REPO": "owner/videos", "VIDEO_DISPATCH_TOKEN": "tok"}), \
+             mock.patch.object(video.httpx, "post", lambda url, **kw: calls.append((url, kw)) or resp):
+            self.assertTrue(video.request_video(Tracker().get("T001")))
+            self.assertFalse(video.request_video({"id": "T002"}))          # no slug: nothing sent
+        self.assertEqual(len(calls), 1)
+        url, kw = calls[0]
+        self.assertEqual(url, "https://api.github.com/repos/owner/videos/dispatches")
+        self.assertEqual(kw["json"]["client_payload"], {"kind": "blog", "topic": "T001", "slug": "kv-cache", "title": "kv cache"})
+        with mock.patch.object(video.httpx, "post", side_effect=AssertionError("must not call")):
+            self.assertFalse(video.request_video(Tracker().get("T001")))    # not configured: silent no-op
+
+    def test_rewrite_keeps_the_video(self):
+        from agents.roles.base import Post
+        from agents.roles.tester import frontmatter
+        p = Post(topic={"id": "T001"}, team="team-1")
+        p.slug, p.brief, p.meta = "kv-cache", {"title": "KV"}, {"title": "KV"}
+        p.rewrite_of = {"slug": "kv-cache", "date": "2026-11-13", "version": 1, "youtube": "Ioch_xZfack"}
+        self.assertIn('youtube: Ioch_xZfack', frontmatter(p))

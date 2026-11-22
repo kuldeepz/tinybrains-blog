@@ -1,0 +1,43 @@
+---
+// The post's 5-minute video. Click-to-load: nothing from YouTube runs (no iframe, no cookies) until the reader presses play,
+// then a youtube-nocookie player replaces the thumbnail.
+interface Props { id: string; title: string }
+const { id, title } = Astro.props;
+---
+<figure class="vid card" data-pagefind-ignore>
+  <button type="button" class="vid-play" data-vid={id} aria-label={`Play the video: ${title}`}>
+    <img src={`https://i.ytimg.com/vi/${id}/hqdefault.jpg`} alt="" loading="lazy" decoding="async" width="480" height="360" />
+    <span class="vid-btn" aria-hidden="true">▶</span>
+  </button>
+  <figcaption><span><b>▶ Watch</b> · the 5-minute version</span><a href={`https://youtu.be/${id}`} rel="noopener" target="_blank">YouTube ↗</a></figcaption>
+</figure>
+
+<script>
+  document.querySelectorAll<HTMLButtonElement>('.vid-play').forEach((b) => {
+    b.addEventListener('click', () => {
+      const f = document.createElement('iframe');
+      f.src = `https://www.youtube-nocookie.com/embed/${b.dataset.vid}?autoplay=1&rel=0`;
+      f.title = b.getAttribute('aria-label') || 'Video';
+      f.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
+      f.allowFullscreen = true;
+      b.replaceWith(f);
+    }, { once: true });
+  });
+</script>
+
+<style>
+  .vid { margin: 18px 0; overflow: hidden; padding: 0; }
+  .vid-play, .vid :global(iframe) { display: block; width: 100%; aspect-ratio: 16 / 9; border: 0; padding: 0; background: #000; }
+  .vid-play { position: relative; cursor: pointer; }
+  .vid-play img { width: 100%; height: 100%; object-fit: cover; opacity: 0.85; transition: opacity 0.15s; }
+  .vid-play:hover img, .vid-play:focus-visible img { opacity: 1; }
+  .vid-btn {
+    position: absolute; inset: 50% auto auto 50%; transform: translate(-50%, -50%);
+    width: 68px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, 0.72); color: #fff; font-size: 20px; border: 1px solid rgba(255, 255, 255, 0.25);
+  }
+  .vid-play:focus-visible { outline: 2px solid var(--link); outline-offset: -2px; }
+  .vid figcaption { display: flex; justify-content: space-between; gap: 12px; padding: 10px 14px; font: 500 12.5px var(--mono); color: var(--mut); }
+  .vid figcaption b { color: var(--tx); }
+  .vid figcaption a { color: var(--link); text-decoration: none; }
+</style>
