@@ -200,7 +200,7 @@
       ],
       "source": "upload",
       "created": "2026-11-17T05:58:37Z",
-      "updated": "2026-11-19T04:21:47Z",
+      "updated": "2026-11-22T15:51:10Z",
       "slug": "six-hyperparameter-tuning-strategies-every-ai-engineer-should-know",
       "pr": 5,
       "url": "https://kuldeepz.github.io/tinybrains-blog/posts/six-hyperparameter-tuning-strategies-every-ai-engineer-should-know/",
@@ -232,7 +232,8 @@
         }
       ],
       "files": [],
-      "rewriting": false
+      "rewriting": false,
+      "youtube": "Ct4J9ef1-8k"
     },
     {
       "id": "T007",
