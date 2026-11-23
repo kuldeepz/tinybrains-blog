@@ -36,6 +36,9 @@ const index = posts.map((p) => ({
 }));
 const topics = allTopics(posts);
 const [brandMain] = SITE.name.split('.');
+// Cloudflare Web Analytics: cookieless visit counts. On only when the Pages build gets the site token (repo variable CF_ANALYTICS_TOKEN).
+const cfToken = (import.meta.env.PUBLIC_CF_ANALYTICS_TOKEN || '').trim();
+const cfBeacon = /^[0-9a-f]{32}$/.test(cfToken) ? JSON.stringify({ token: cfToken }) : '';
 ---
 <!doctype html>
 <html lang={SITE.lang} data-theme="dark">
@@ -324,5 +327,6 @@ const [brandMain] = SITE.name.split('.');
           : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
       });
     </script>
+    {cfBeacon && <script is:inline defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon={cfBeacon}></script>}
   </body>
 </html>

@@ -22,6 +22,8 @@ jobs:
         working-directory: site
       - run: npm run build
         working-directory: site
+        env:
+          PUBLIC_CF_ANALYTICS_TOKEN: ${{ vars.CF_ANALYTICS_TOKEN }}
       - uses: actions/upload-pages-artifact@v3
         with: { path: site/dist }
   deploy:
