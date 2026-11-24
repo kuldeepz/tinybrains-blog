@@ -1,3 +1,10 @@
 # One blog idea per line, in your own words. Commit this file and the bot turns each line into a
 # topic (title, notes, tags) in topics.json, then removes the line. Lines starting with # are ignored.
 # This file is public: don't put anything private here.
+Series "What happens when you hit Send" 1/7: anatomy of one LLM API call on Azure OpenAI, from HTTPS to streamed tokens: auth, gateway, TPM/RPM limits, prompt and output content filters, deployment/region routing, tokenization, sampling, SSE streaming, billing. Link the vLLM post for serving.
+Series "What happens when you hit Send" 2/7: what happens when you generate an image from a prompt: prompt rewriting, safety checks, diffusion denoising steps, upscaling, output moderation, C2PA provenance, URL vs base64, why one image costs what it costs.
+Series "What happens when you hit Send" 3/7: why video generation (Sora on Azure, Veo on Gemini) is an async job, not a response: submit, job id, poll, download; why it takes minutes; how frames stay consistent; how length and resolution drive cost.
+Series "What happens when you hit Send" 4/7: sending an image, PDF or audio to a model: how non-text input becomes tokens (image patches, audio frames), why a screenshot can cost 1000+ tokens, and what it means for context size and price.
+Series "What happens when you hit Send" 5/7: how an AI agent completes a task: tool calling loop (model asks, your code runs, result goes back), Claude Code, Gemini function calling and OpenAI tools compared; context growth, permissions, why agents are slow and costly.
+Series "What happens when you hit Send" 6/7: when the AI call fails: 429s, timeouts, content-filter blocks, broken streams; retries with backoff and jitter, idempotency, fallback across models and regions; designing for failure in production.
+Series "What happens when you hit Send" 7/7: the same request on Azure OpenAI, Gemini and Claude: deployments vs model names, regional quotas, safety filters, prompt caching, batch APIs, data residency; what matters in production.
