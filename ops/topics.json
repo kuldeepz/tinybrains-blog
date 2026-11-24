@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "next_id": 29,
+  "next_id": 36,
   "topics": [
     {
       "id": "T001",
@@ -831,6 +831,195 @@
       "history": [
         {
           "at": "2026-11-19T10:25:38Z",
+          "status": "idea"
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": "T029",
+      "title": "What Happens When You Hit Send: Anatomy of an Azure OpenAI API Call",
+      "notes": "Owner's idea: Series \"What happens when you hit Send\" 1/7: anatomy of one LLM API call on Azure OpenAI, from HTTPS to streamed tokens: auth, gateway, TPM/RPM limits, prompt and output content filters, deployment/region routing, tokenization, sampling, SSE streaming, billing. Link the vLLM post for serving.\nThis first post in the series traces one request from HTTPS submission through Azure OpenAI authentication, gateway handling, rate limits, content filters, deployment and region routing, tokenization, sampling, SSE streaming, and billing. The angle is a practical request lifecycle walkthrough that helps engineers reason about latency, failures, observability, and cost. After reading, the reader should be able to map each stage of an Azure OpenAI call to the relevant platform behavior and debugging signals. Verify current Azure OpenAI quotas, content-filter behavior, routing details, streaming event formats, and billing units against official documentation, and cross-link the vLLM pos",
+      "status": "idea",
+      "tags": [
+        "azure-openai",
+        "llm-api",
+        "streaming",
+        "inference",
+        "vllm"
+      ],
+      "source": "ideas.txt",
+      "created": "2026-11-24T11:50:27Z",
+      "updated": "2026-11-24T11:50:27Z",
+      "slug": null,
+      "pr": null,
+      "url": null,
+      "private_files": false,
+      "history": [
+        {
+          "at": "2026-11-24T11:50:27Z",
+          "status": "idea"
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": "T030",
+      "title": "What Happens When You Generate an Image from a Prompt",
+      "notes": "Owner's idea: Series \"What happens when you hit Send\" 2/7: what happens when you generate an image from a prompt: prompt rewriting, safety checks, diffusion denoising steps, upscaling, output moderation, C2PA provenance, URL vs base64, why one image costs what it costs.\nTrace the full image-generation request path from prompt submission to final asset, covering prompt rewriting, safety checks, diffusion denoising steps, upscaling, output moderation, C2PA provenance, and URL versus base64 responses. Explain the engineering tradeoffs behind latency, failure modes, and why one image costs what it costs, using provider-neutral language where behavior varies. After reading, the reader should be able to reason about where an image-generation pipeline can fail, what metadata to inspect, and which cost drivers to measure. Verify provider-specific details such as exact moderation stages, provenance support, response formats, and pricing before publishing.",
+      "status": "idea",
+      "tags": [
+        "image-generation",
+        "diffusion",
+        "ai-engineering",
+        "safety",
+        "provenance"
+      ],
+      "source": "ideas.txt",
+      "created": "2026-11-24T11:50:27Z",
+      "updated": "2026-11-24T11:50:27Z",
+      "slug": null,
+      "pr": null,
+      "url": null,
+      "private_files": false,
+      "history": [
+        {
+          "at": "2026-11-24T11:50:27Z",
+          "status": "idea"
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": "T031",
+      "title": "What happens when you hit Send: video generation is an async job",
+      "notes": "Owner's idea: Series \"What happens when you hit Send\" 3/7: why video generation (Sora on Azure, Veo on Gemini) is an async job, not a response: submit, job id, poll, download; why it takes minutes; how frames stay consistent; how length and resolution drive cost.\nFrame video generation as an asynchronous workflow: submit a request, receive a job id, poll status, then download the artifact. Explain why minutes-long latency is expected, how consistency is maintained across frames, and how duration and resolution affect cost. Readers should be able to design a client that handles job lifecycle, retries, and progress without assuming a synchronous response. Verify current API details for Sora on Azure and Veo on Gemini before publishing.",
+      "status": "idea",
+      "tags": [
+        "video-generation",
+        "async-jobs",
+        "ai-apis",
+        "cost",
+        "latency"
+      ],
+      "source": "ideas.txt",
+      "created": "2026-11-24T11:50:27Z",
+      "updated": "2026-11-24T11:50:27Z",
+      "slug": null,
+      "pr": null,
+      "url": null,
+      "private_files": false,
+      "history": [
+        {
+          "at": "2026-11-24T11:50:27Z",
+          "status": "idea"
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": "T032",
+      "title": "What happens when you hit Send: images, PDFs, and audio become tokens",
+      "notes": "Owner's idea: Series \"What happens when you hit Send\" 4/7: sending an image, PDF or audio to a model: how non-text input becomes tokens (image patches, audio frames), why a screenshot can cost 1000+ tokens, and what it means for context size and price.\nThis installment follows non-text uploads from client to model: images are tiled into patches, PDFs may be rendered or parsed into pages, images, or text, and audio is chunked into frames before encoding. Explain why a screenshot can cost 1000+ tokens because of resolution, tiling, and provider-specific image tokenization, and how that affects context size and price. Readers should be able to estimate the token impact of common uploads and choose lower-resolution or text-first alternatives when appropriate. Verify exact token counts, PDF handling, and audio frame rates against current provider documentation.",
+      "status": "idea",
+      "tags": [
+        "multimodal",
+        "tokenization",
+        "llm-cost",
+        "context-window",
+        "ai-engineering"
+      ],
+      "source": "ideas.txt",
+      "created": "2026-11-24T11:50:27Z",
+      "updated": "2026-11-24T11:50:27Z",
+      "slug": null,
+      "pr": null,
+      "url": null,
+      "private_files": false,
+      "history": [
+        {
+          "at": "2026-11-24T11:50:27Z",
+          "status": "idea"
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": "T033",
+      "title": "What happens when you hit Send 5/7: the agent tool-calling loop",
+      "notes": "Owner's idea: Series \"What happens when you hit Send\" 5/7: how an AI agent completes a task: tool calling loop (model asks, your code runs, result goes back), Claude Code, Gemini function calling and OpenAI tools compared; context growth, permissions, why agents are slow and costly.\nThis post should trace a single agent task through the tool-calling loop: the model requests a tool, your code executes it, and the result is appended back into the conversation. Compare Claude Code, Gemini function calling, and OpenAI tools at the level of request/response shape, permission boundaries, and context growth, then explain why multi-step agents are slower and more expensive than single-turn chat. After reading, the reader should be able to sketch a safe tool loop, choose where to enforce permissions, and identify the main cost drivers of agentic workflows. Verify current provider documentation for tool schemas, approval flows, and context limits before publishing.",
+      "status": "idea",
+      "tags": [
+        "ai-agents",
+        "tool-calling",
+        "claude-code",
+        "gemini",
+        "openai-tools"
+      ],
+      "source": "ideas.txt",
+      "created": "2026-11-24T11:50:27Z",
+      "updated": "2026-11-24T11:50:27Z",
+      "slug": null,
+      "pr": null,
+      "url": null,
+      "private_files": false,
+      "history": [
+        {
+          "at": "2026-11-24T11:50:27Z",
+          "status": "idea"
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": "T034",
+      "title": "What happens when you hit Send 6/7: when the AI call fails",
+      "notes": "Owner's idea: Series \"What happens when you hit Send\" 6/7: when the AI call fails: 429s, timeouts, content-filter blocks, broken streams; retries with backoff and jitter, idempotency, fallback across models and regions; designing for failure in production.\nThis installment examines failure modes in production AI calls—rate limits, timeouts, content-filter blocks, and broken streams—and treats them as normal operating conditions rather than exceptional bugs. Cover retry policies with exponential backoff and jitter, idempotency keys for safe retries, and fallback strategies across models, providers, and regions, including when not to retry. The reader should leave able to design a resilient send path with bounded retries, observable failure states, and graceful degradation. Verify any provider-specific error codes, retry-after semantics, and regional fallback constraints against current documentation.",
+      "status": "idea",
+      "tags": [
+        "ai-engineering",
+        "reliability",
+        "retries",
+        "fallback",
+        "production"
+      ],
+      "source": "ideas.txt",
+      "created": "2026-11-24T11:50:27Z",
+      "updated": "2026-11-24T11:50:27Z",
+      "slug": null,
+      "pr": null,
+      "url": null,
+      "private_files": false,
+      "history": [
+        {
+          "at": "2026-11-24T11:50:27Z",
+          "status": "idea"
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": "T035",
+      "title": "What Happens When You Hit Send: Azure OpenAI vs Gemini vs Claude",
+      "notes": "Owner's idea: Series \"What happens when you hit Send\" 7/7: the same request on Azure OpenAI, Gemini and Claude: deployments vs model names, regional quotas, safety filters, prompt caching, batch APIs, data residency; what matters in production.\nThis final installment follows one identical request across Azure OpenAI, Gemini, and Claude to expose where the abstractions diverge: deployment names versus model IDs, regional quota behavior, safety filtering, prompt caching, batch APIs, and data residency. Cover the request path from client to provider, the operational knobs that change behavior, and the production trade-offs that matter most. After reading, the reader should be able to build a provider comparison checklist and decide which controls to pin, monitor, and test. Verify current provider documentation for exact quota limits, caching eligibility, batch constraints, and residency guarantees before publishing.",
+      "status": "idea",
+      "tags": [
+        "azure-openai",
+        "gemini",
+        "claude",
+        "production",
+        "api-design"
+      ],
+      "source": "ideas.txt",
+      "created": "2026-11-24T11:50:27Z",
+      "updated": "2026-11-24T11:50:27Z",
+      "slug": null,
+      "pr": null,
+      "url": null,
+      "private_files": false,
+      "history": [
+        {
+          "at": "2026-11-24T11:50:27Z",
           "status": "idea"
         }
       ],
