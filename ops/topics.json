@@ -306,7 +306,7 @@
       "id": "T009",
       "title": "Local-First LLM Routing: Ollama SLMs to Frontier APIs",
       "notes": "Owner's idea: Model routing and fallback cascades: routing routine queries to local quantized SLMs via Ollama and escalating hard reasoning to frontier APIs\nThe angle is a practical routing layer that sends routine, low-risk queries to local quantized SLMs served by Ollama and escalates ambiguous or high-stakes reasoning to frontier APIs. Cover request classification, confidence thresholds, fallback cascades, timeouts, retries, cost/latency tradeoffs, and observability for routing decisions. After reading, the reader should be able to design a routing policy, implement fallback behavior, and measure whether local-first routing improves latency and cost without hurting answer quality. Verify any latency, cost, quality, and model-size claims against your own workload and provider benchmarks.",
-      "status": "in_review",
+      "status": "published",
       "tags": [
         "model-routing",
         "ollama",
@@ -316,10 +316,10 @@
       ],
       "source": "ideas.txt",
       "created": "2026-11-19T10:22:56Z",
-      "updated": "2026-11-27T12:48:30Z",
+      "updated": "2026-11-27T13:17:42Z",
       "slug": "local-first-llm-routing-ollama-slms-to-frontier-apis",
       "pr": 7,
-      "url": null,
+      "url": "https://kuldeepz.github.io/tinybrains-blog/posts/local-first-llm-routing-ollama-slms-to-frontier-apis/",
       "private_files": false,
       "history": [
         {
@@ -333,9 +333,14 @@
         {
           "at": "2026-11-27T12:48:30Z",
           "status": "in_review"
+        },
+        {
+          "at": "2026-11-27T13:17:42Z",
+          "status": "published"
         }
       ],
-      "files": []
+      "files": [],
+      "rewriting": false
     },
     {
       "id": "T010",
