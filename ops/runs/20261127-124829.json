@@ -1,0 +1,122 @@
+{
+  "run": "20261127-124829",
+  "mode": "senior",
+  "usage": {
+    "calls": 11,
+    "free_calls": 1,
+    "paid_calls": 10,
+    "fallbacks": 0,
+    "prompt_tokens": 94605,
+    "completion_tokens": 38536,
+    "models": {
+      "baidu/ernie-5.5-flash-preview:free": 1,
+      "paid:mini": 4,
+      "paid:architect": 6
+    }
+  },
+  "posts": [
+    {
+      "topic": "T009",
+      "slug": "local-first-llm-routing-ollama-slms-to-frontier-apis",
+      "ok": true,
+      "pr": 7,
+      "error": "",
+      "scores": [
+        6,
+        8,
+        8
+      ],
+      "reviews": [
+        {
+          "score": 6,
+          "rubric": {
+            "insight": 9,
+            "correctness": 4,
+            "tradeoffs": 9,
+            "actionability": 6,
+            "voice": 8,
+            "structure": 7,
+            "code": 2
+          },
+          "issues": [
+            "Replace the early returns beginning `if kind == \"high_risk\"` and `if kind == \"ambiguous\" and conf < 0.6` with execution-path selection followed by a shared frontier-call path. Every successful route must return a normalized, validated answer; otherwise return an explicit refusal or degradation.",
+            "Replace `classify_request(prompt) -> tuple[str, float, bool]` with separate authoritative cloud permission and intent/risk inputs. Do not derive permission from prompt keywords. Replace `return Decision(\"refuse\", \"cloud_not_allowed\", ...)` with a permitted local-only path or a policy-specific refusal when local processing itself is disallowed.",
+            "Replace `deadline - 0.4` with a local-stage deadline capped at the configured local budget and compatible with the reserved frontier window. Enforce the overall deadline using `asyncio.timeout_at` or an equivalent wall-clock mechanism around admission, inference, backoff, and validation. Document the Python version required by the chosen API, reject expired budgets instead of using `max(0.1, ...)`, and recheck remaining time before each retry.",
+            "Move `admission = asyncio.Semaphore(4)` into a reusable router instance or service lifecycle so requests share it. Acquire it under the request deadline, release it immediately after the local attempt, and describe separate frontier admission limits. Do not hold a local permit while waiting for cloud fallback.",
+            "Strengthen `validate_extraction`: require a JSON object, exact field types, valid non-boolean integer offsets, and `answer == source_text[start:end]` for a source-span extraction contract. Add the relevant task or business check; a matching substring alone does not establish that the correct invoice number was selected. Run the same task validator on frontier results.",
+            "Replace the sample `route(\"Extract the invoice number and source span from this text.\")` with a request containing actual source text and a defined output schema. Separate task instructions from source text, specify what to return when no invoice number exists, and preserve that original context for escalation. Use Ollama's documented structured-output capability if included, with an official API citation.",
+            "Replace `FRONTIER_URL` plus the unexplained payload with one documented provider API and response parser. Configure model and credentials through the environment, extract actual answer text and usage, detect refusals, and validate the answer before returning it. Add `pip install httpx`, required environment variables, Ollama setup, and invocation instructions without inventing model versions.",
+            "Replace both broad `except Exception` retry paths with explicit transport, HTTP-status, and response-validation handling. Retry at most once only for selected transient failures, respect applicable retry guidance and remaining budget, and fail immediately on configuration, authentication, or invalid-request errors. Correct the sentence claiming the current example retries only transient failures.",
+            "Replace the numeric constants in `classify_request` and `conf >= 0.75` with either a calibrated policy artifact or a deterministic bounded-intent gate that does not masquerade as probability. Do not send requests to local inference when the configured policy already guarantees escalation. Explain that keyword routing is illustrative and not a permission or safety boundary.",
+            "Make the example's structured event include request ID, selected path, classifier method and score when available, configured threshold, fallback reason, per-stage and total latency, available token counts, estimated API cost using configured rates, model/artifact identity, and policy version. Represent unavailable measurements as null rather than fabricated values, and provide an identifier for joining delayed quality outcomes."
+          ]
+        },
+        {
+          "score": 8,
+          "rubric": {
+            "insight": 9,
+            "correctness": 7,
+            "tradeoffs": 9,
+            "actionability": 8,
+            "voice": 9,
+            "structure": 8,
+            "code": 7
+          },
+          "issues": [
+            "Replace the absence logic around `matches = list(re.finditer(...))` and `if not matches:` with a contract-aware parser. Detect labeled lines separately from valid values, support CRLF without changing offsets into the original source, and reject malformed or multiple labeled fields rather than accepting all-null output. Add compact test cases covering CRLF, malformed values, duplicate labels, absent fields, and Boolean offsets.",
+            "After \u201cThe implementation below requires exactly one line labeled `Invoice number:`,\u201d explicitly state that this exact task should normally be solved deterministically because the parser already knows the answer. Either label the model calls as an educational transport exercise with a production deterministic bypass, or replace the task with bounded extraction whose semantic selection genuinely requires a model and whose validator does not reconstruct the entire answer.",
+            "Change the local handler `except (TimeoutError, httpx.HTTPError, ValueError, KeyError, TypeError, IndexError)` so policy refusals are distinct from ordinary task-validation failures. Introduce a typed policy-refusal result or exception that terminates routing without escalation. Clarify how ordinary Ollama refusal text is evaluated, or explicitly state that this example lacks a refusal-policy checker and must not be expanded to safety-sensitive intents without one.",
+            "Add an environment-configured, bounded `max_completion_tokens` value to the frontier payload, using a model that supports the documented parameter. Validate configuration at router construction. Keep schema validation and treat truncated invalid output as a validation failure, not a reason for an unbounded retry.",
+            "Reduce `router.py` below approximately 120 lines without compressing control flow into harder-to-review one-liners. Remove HTTP-date `Retry-After` parsing and nonessential telemetry scaffolding from the teaching example, or move peripheral service concerns into concise prose. Preserve deadlines, shared admission, validation, transient-only retry, refusal semantics, and explicit degradation.",
+            "Change \u201cThe event records measured stage durations and available usage\u201d and `estimated_api_cost` reporting to distinguish observed successful-response token cost from complete request cost. Record attempt count and an unknown-usage flag for timed-out attempts; explain that provider billing reconciliation is needed for full request cost. Do not emit an apparently complete cost estimate when earlier attempt usage is unknown.",
+            "Add the requested internal links using actual site URLs, especially the embeddings, vLLM serving, and KV-cache articles. Near \u201cCompare p95 by execution path,\u201d require both TTFT and validated-answer completion latency, plus concurrency, cold/warm residency, and prompt/output distributions. State that validated-answer latency is the user-facing acceptance metric for this buffered example."
+          ]
+        },
+        {
+          "score": 8,
+          "rubric": {
+            "insight": 9,
+            "correctness": 8,
+            "tradeoffs": 9,
+            "actionability": 8,
+            "voice": 9,
+            "structure": 8,
+            "code": 7
+          },
+          "issues": [
+            "Fix usage accounting around 'body = response.json()'. Mark the attempt's usage unknown until a valid usage object with valid token counts has been recovered. Preserve unknown status from earlier failed attempts even after a successful retry. A malformed HTTP-200 body must not leave complete request cost apparently knowable.",
+            "Replace the unconditional 'self.key = os.environ[\"OPENAI_API_KEY\"]' with optional cloud configuration. Require and validate the key only when configuring or selecting a frontier path. Document the behavior when cloud permission exists but the cloud backend is not configured.",
+            "Replace or substantially compress the material introduced by 'The model calls below are an educational transport exercise'. Prefer a bounded semantic task with an independently evaluated acceptance rule. If retaining this exact extraction contract, make the deterministic bypass the real fast path and clearly limit the claimed deliverable to routing mechanics.",
+            "Consolidate the main implementation into one executable example within approximately 120 lines, ideally 80\u201390. Remove the contract test block from the main narrative or move it to a linked companion file. Include a short executable entry point using an application-lifecycle AsyncClient and printing the returned structured event. State that asyncio.timeout_at requires Python 3.11 or later.",
+            "Replace 'Add request identifiers, stage timing spans, classifier signals, artifact digest, policy version, fallback reason, and delayed quality joins in the service' with a minimal implementation of the essential event fields: request ID, selected path, intent/risk, policy and configured model identity, stage/total durations, attempts, token usage, explicit fallback reason, and validator outcome. Leave delayed outcome reconciliation and artifact discovery as clearly identified service integrations.",
+            "Replace 'event[\"fallback_reason\"] = type(exc).__name__' with stable reason codes that distinguish admission/deadline exhaustion, transport failure, schema failure, semantic validation failure, and backend unavailability. Add an explicit local_skipped_budget reason when the reserved frontier window prevents local admission.",
+            "Make 'Malformed values and duplicate labels require clarification' match execution behavior: return a clarification outcome with a stable contract-specific reason. Replace 'return result(\"degrade\", str(exc))' for timeout handling with an explicit deadline_exceeded code rather than an empty string.",
+            "Expand 'Estimate acceptance conditional on intent, model artifact, and the exact validators deployed' into a compact numbered calibration procedure: collect labeled examples, score eligible requests, run local generation and validators, fit or bin observed correctness on calibration data, choose an acceptance cutoff against a false-acceptance limit, and report coverage plus uncertainty on a held-out split. Explain that classifier similarity is an input signal, not the correctness target.",
+            "Verify the exact '/api/chat' structured-output fields and the 'gpt-4o' strict-schema/max_completion_tokens request against the linked official documentation before publication. Do not introduce current pricing claims; retain the hypothetical arithmetic.",
+            "Add the relevant internal links to the embedding, vLLM serving, and KV-cache discussions without expanding the narrative. Confirm PullQuote registration in the MDX build."
+          ]
+        }
+      ],
+      "log": [
+        "[team-1/PM#1] brief ready: 'Local-First LLM Routing: Ollama SLMs to Frontier APIs' [Infra/Practitioner/Tutorial]",
+        "[team-1/Researcher#1] research done, 8 sources",
+        "[team-1/Architect#1] architect brief ready (1193 words)",
+        "[team-1/Writer#1] draft written (2752 words)",
+        "[team-1/Editor#1] edit pass done",
+        "[team-1/Designer#1] layout pass done, cover generated, 0 diagram(s)",
+        "[team-1/Reviewer#1] score 6/10 -> changes requested",
+        "[team-1/Tester#1] static checks passed",
+        "[team-1/Editor#1] revised per review",
+        "[team-1/Reviewer#1] score 8/10 -> changes requested",
+        "[team-1/Tester#1] static checks passed",
+        "[team-1/Tester#1] style issues: ['a code block is 149 lines; cut it to under ~90 lines that teach the point (drop CLI/option plumbing)']",
+        "[team-1/Editor#1] revised per review",
+        "[team-1/Reviewer#1] score 8/10 -> changes requested",
+        "[team-1/Tester#1] static checks passed",
+        "[team-1/Head] review rounds exhausted (score 8); sending to owner with notes",
+        "[team-1/Tester#1] static checks passed",
+        "[team-1/Publisher] PR #7 opened"
+      ]
+    }
+  ]
+}
