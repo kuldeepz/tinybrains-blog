@@ -316,7 +316,7 @@
       ],
       "source": "ideas.txt",
       "created": "2026-11-19T10:22:56Z",
-      "updated": "2026-11-27T13:17:42Z",
+      "updated": "2026-11-27T16:14:58Z",
       "slug": "local-first-llm-routing-ollama-slms-to-frontier-apis",
       "pr": 7,
       "url": "https://kuldeepz.github.io/tinybrains-blog/posts/local-first-llm-routing-ollama-slms-to-frontier-apis/",
@@ -340,7 +340,8 @@
         }
       ],
       "files": [],
-      "rewriting": false
+      "rewriting": false,
+      "youtube": "pp09sHbBrmM"
     },
     {
       "id": "T010",
